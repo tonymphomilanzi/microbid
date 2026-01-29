@@ -159,7 +159,7 @@ export default function Home() {
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Browse by platform</h2>
               <p className="text-sm text-muted-foreground">
-          
+                Swipe horizontally—fast filters like modern apps.
               </p>
             </div>
             <Button asChild variant="ghost" className="hidden sm:inline-flex">

@@ -7,16 +7,22 @@ export default function ImageUpload({ value, onChange }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(value || "");
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleFile(file) {
+    setError("");
     setPreview(URL.createObjectURL(file));
     setUploading(true);
+
     try {
       const fd = new FormData();
       fd.append("file", file);
+
       const { url } = await listingsService.uploadImage(fd);
-      onChange(url);
+      onChange(url);         // IMPORTANT: sets form.image
       setPreview(url);
+    } catch (e) {
+      setError(e?.response?.data?.message || e.message || "Upload failed");
     } finally {
       setUploading(false);
     }
@@ -50,8 +56,14 @@ export default function ImageUpload({ value, onChange }) {
         disabled={uploading}
       >
         <UploadCloud className="h-4 w-4" />
-        {uploading ? "Uploading..." : "Upload Image"}
+        {uploading ? "Uploading..." : value ? "Replace Image" : "Upload Image"}
       </Button>
+
+      {error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
     </div>
   );
 }
