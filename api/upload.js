@@ -1,10 +1,6 @@
-import formidable from "formidable";
+import { IncomingForm } from "formidable";
 import { v2 as cloudinary } from "cloudinary";
 import { requireAuth } from "./_lib/auth.js";
-
-export const config = {
-  api: { bodyParser: false },
-};
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -12,23 +8,42 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+export const config = {
+  api: { bodyParser: false }, // ok to keep
+};
+
 export default async function handler(req, res) {
   try {
-    if (req.method !== "POST") return res.status(405).json({ message: "Method not allowed" });
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST");
+      return res.status(405).json({ message: "Method not allowed" });
+    }
 
-    await requireAuth(req); // prevent anonymous abuse
+    await requireAuth(req); // must be logged in to upload
 
-    const form = formidable({ multiples: false });
-
-    const { files } = await new Promise((resolve, reject) => {
-      form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
+    const form = new IncomingForm({
+      multiples: false,
+      keepExtensions: true,
     });
 
-    const file = files.file;
-    if (!file) return res.status(400).json({ message: "No file uploaded" });
+    const { files } = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) return reject(err);
+        resolve({ fields, files });
+      });
+    });
 
-    const upload = await cloudinary.uploader.upload(file.filepath, {
-      folder: "Microbid-marketplace",
+    // Formidable can return an array or a single file
+    const picked = files?.file;
+    const file = Array.isArray(picked) ? picked[0] : picked;
+
+    if (!file) return res.status(400).json({ message: "No file uploaded (field name must be 'file')" });
+
+    const filePath = file.filepath || file.path; // filepath (v3), path (older)
+    if (!filePath) return res.status(400).json({ message: "Invalid file payload (missing filepath)" });
+
+    const upload = await cloudinary.uploader.upload(filePath, {
+      folder: "flipearn-marketplace",
       resource_type: "image",
     });
 
