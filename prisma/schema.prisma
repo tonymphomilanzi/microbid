@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ListingStatus {
+  ACTIVE
+  INACTIVE
+  SOLD
+}
+
+model User {
+  id        String   @id // firebase uid
+  email     String
+  createdAt DateTime @default(now())
+
+  listings  Listing[]
+  purchases Purchase[] @relation("buyerPurchases")
+  sales     Purchase[] @relation("sellerSales")
+}
+
+model Listing {
+  id          String       @id @default(cuid())
+  title       String
+  platform    String
+  price       Int
+  description String
+  image       String
+  metrics     Json?
+  status      ListingStatus @default(ACTIVE)
+
+  sellerId    String
+  seller      User         @relation(fields: [sellerId], references: [id])
+
+  buyerId     String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  purchases   Purchase[]
+}
+
+model Purchase {
+  id              String   @id @default(cuid())
+  listingId       String
+  listing         Listing  @relation(fields: [listingId], references: [id])
+
+  buyerId         String
+  buyer           User     @relation("buyerPurchases", fields: [buyerId], references: [id])
+
+  sellerId        String
+  seller          User     @relation("sellerSales", fields: [sellerId], references: [id])
+
+  amount          Int
+  stripeSessionId String?
+  createdAt       DateTime @default(now())
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+}
