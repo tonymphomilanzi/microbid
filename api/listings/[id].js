@@ -3,7 +3,10 @@ import { requireAuth } from "../_lib/auth.js";
 
 export default async function handler(req, res) {
   try {
-    const { id } = req.query;
+    const rawId = req.query?.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+
+    if (!id) return res.status(400).json({ message: "Missing listing id" });
 
     if (req.method === "GET") {
       const listing = await prisma.listing.findUnique({
@@ -20,9 +23,7 @@ export default async function handler(req, res) {
 
       const listing = await prisma.listing.findUnique({ where: { id } });
       if (!listing) return res.status(404).json({ message: "Not found" });
-      if (listing.sellerId !== decoded.uid) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
+      if (listing.sellerId !== decoded.uid) return res.status(403).json({ message: "Forbidden" });
 
       await prisma.listing.delete({ where: { id } });
       return res.status(200).json({ ok: true });

@@ -132,21 +132,7 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              {/**<Card className="border-border/60 bg-card/60 backdrop-blur">
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">How it feels</div>
-                    <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <CreditCard className="h-4 w-4" />
-                      Stripe checkout
-                    </div>
-                  </div>
-                  <div className="mt-3 text-sm text-muted-foreground">
-                    A clean browsing experience with strong CTAs and quick actions—designed like a
-                    modern marketplace.
-                  </div>
-                </CardContent>
-              </Card>**/}
+          
 
 
             </div>

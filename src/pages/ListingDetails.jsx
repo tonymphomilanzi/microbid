@@ -11,40 +11,72 @@ import { MessageCircle, CreditCard } from "lucide-react";
 export default function ListingDetails() {
   const { id } = useParams();
   const { user, openAuthModal } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let mounted = true;
+
     async function run() {
       setLoading(true);
+      setError("");
+      setListing(null);
+
       try {
         const { listing } = await listingsService.getListing(id);
         if (mounted) setListing(listing);
+      } catch (e) {
+        const msg = e?.response?.data?.message || e.message || "Failed to load listing";
+        if (mounted) setError(msg);
       } finally {
         if (mounted) setLoading(false);
       }
     }
-    run();
+
+    if (id) run();
     return () => (mounted = false);
   }, [id]);
 
   async function buy() {
-    if (!user) return openAuthModal();
-    const { checkoutUrl } = await listingsService.checkout(id);
-    window.location.href = checkoutUrl;
+    try {
+      if (!user) return openAuthModal();
+      const { checkoutUrl } = await listingsService.checkout(id);
+      window.location.href = checkoutUrl;
+    } catch (e) {
+      alert(e?.response?.data?.message || e.message || "Checkout failed");
+    }
   }
 
   function chat() {
     if (!user) return openAuthModal();
-    // Chat UI hook point (backed by Postgres models + endpoints later)
     alert("Chat feature scaffold: add Conversation/Message endpoints to enable.");
   }
 
-  if (loading || !listing) {
+  if (loading) {
     return (
       <PageContainer>
         <div className="py-10 text-sm text-muted-foreground">Loading...</div>
+      </PageContainer>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageContainer>
+        <div className="py-10 space-y-2">
+          <div className="text-sm font-medium">Could not load listing</div>
+          <div className="text-sm text-destructive">{error}</div>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (!listing) {
+    return (
+      <PageContainer>
+        <div className="py-10 text-sm text-muted-foreground">Listing not found.</div>
       </PageContainer>
     );
   }
@@ -56,7 +88,11 @@ export default function ListingDetails() {
       <div className="py-8 space-y-6">
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="overflow-hidden rounded-xl border bg-muted">
-            <img src={listing.image} alt={listing.title} className="h-full w-full object-cover" />
+            <img
+              src={listing.image}
+              alt={listing.title}
+              className="h-full w-full object-cover"
+            />
           </div>
 
           <div className="space-y-4">
@@ -82,12 +118,35 @@ export default function ListingDetails() {
               </Card>
             </div>
 
-            {/* Full metrics section */}
             <div className="grid grid-cols-2 gap-3">
-              <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Followers/Subs</div><div className="text-base font-semibold">{m.followers ?? "—"}</div></CardContent></Card>
-              <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Avg Views</div><div className="text-base font-semibold">{m.avgViews ?? "—"}</div></CardContent></Card>
-              <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Engagement</div><div className="text-base font-semibold">{m.engagementRate ? `${m.engagementRate}%` : "—"}</div></CardContent></Card>
-              <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Monetized</div><div className="text-base font-semibold">{typeof m.monetized === "boolean" ? (m.monetized ? "Yes" : "No") : "—"}</div></CardContent></Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Followers/Subs</div>
+                  <div className="text-base font-semibold">{m.followers ?? "—"}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Avg Views</div>
+                  <div className="text-base font-semibold">{m.avgViews ?? "—"}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Engagement</div>
+                  <div className="text-base font-semibold">
+                    {m.engagementRate ? `${m.engagementRate}%` : "—"}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Monetized</div>
+                  <div className="text-base font-semibold">
+                    {typeof m.monetized === "boolean" ? (m.monetized ? "Yes" : "No") : "—"}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
