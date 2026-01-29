@@ -8,7 +8,6 @@ export default async function handler(req, res) {
     const rawId = req.query?.id;
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
 
-   return res.status(200).json({ hit: "[id].js", id: req.query.id });
     if (!id) return res.status(400).json({ message: "Missing listing id" });
 
     if (req.method === "GET") {
