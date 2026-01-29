@@ -1,10 +1,23 @@
 import { prisma } from "../_lib/prisma.js";
 import { requireAuth } from "../_lib/auth.js";
-//import { stripe } from "../_lib/stripe.js";
 import { getStripe } from "../_lib/stripe.js";
+
+function readJson(req) {
+  const b = req.body;
+
+  if (!b) return {};
+  if (typeof b === "object") return b; // Vercel often parses JSON automatically
+  if (Buffer.isBuffer(b)) return JSON.parse(b.toString("utf8"));
+  if (typeof b === "string") return JSON.parse(b);
+
+  return {};
+}
 
 export default async function handler(req, res) {
   try {
+    // -------------------------
+    // GET /api/listings (public)
+    // -------------------------
     if (req.method === "GET") {
       const { platform, q, minPrice, maxPrice } = req.query;
 
@@ -38,20 +51,33 @@ export default async function handler(req, res) {
       return res.status(200).json({ listings });
     }
 
+    // --------------------------
+    // POST /api/listings (auth)
+    // - Create/Update listing
+    // - intent=checkout (Stripe)
+    // --------------------------
     if (req.method === "POST") {
       const decoded = await requireAuth(req);
-      const body = req.body ? JSON.parse(req.body) : {};
+      const body = readJson(req);
 
       // Intent: Stripe checkout (kept within allowed endpoint list)
       if (body.intent === "checkout") {
+        const listingId = body.listingId;
+
+        if (!listingId) {
+          return res.status(400).json({ message: "Missing listingId" });
+        }
+
         const listing = await prisma.listing.findUnique({
-          where: { id: body.listingId },
+          where: { id: listingId },
           include: { seller: true },
         });
 
         if (!listing || listing.status !== "ACTIVE") {
           return res.status(404).json({ message: "Listing not available" });
         }
+
+        const stripe = getStripe();
 
         const session = await stripe.checkout.sessions.create({
           mode: "payment",
@@ -65,7 +91,7 @@ export default async function handler(req, res) {
                 unit_amount: listing.price * 100,
                 product_data: {
                   name: listing.title,
-                  images: [listing.image],
+                  images: listing.image ? [listing.image] : [],
                 },
               },
             },
@@ -77,8 +103,7 @@ export default async function handler(req, res) {
           },
         });
 
-        // You’d normally confirm payment via Stripe webhook.
-        // This scaffold stores session id; mark SOLD on webhook later.
+        // Note: normally you confirm payment via Stripe webhook.
         await prisma.purchase.create({
           data: {
             listingId: listing.id,
@@ -93,19 +118,12 @@ export default async function handler(req, res) {
       }
 
       // Create / Update (Upsert) listing
-      const {
-        id,
-        title,
-        platform,
-        price,
-        description,
-        image,
-        metrics,
-        status,
-      } = body;
+      const { id, title, platform, price, description, image, metrics, status } = body;
 
-      if (!title || !platform || !price || !description || !image) {
-        return res.status(400).json({ message: "Missing required fields" });
+      const numericPrice = Number(price);
+
+      if (!title || !platform || !description || !image || !Number.isFinite(numericPrice) || numericPrice <= 0) {
+        return res.status(400).json({ message: "Missing/invalid required fields" });
       }
 
       // Ensure user exists
@@ -115,10 +133,12 @@ export default async function handler(req, res) {
         create: { id: decoded.uid, email: decoded.email ?? "unknown" },
       });
 
+      // Update
       if (id) {
-        // Update only if owner
         const existing = await prisma.listing.findUnique({ where: { id } });
-        if (!existing || existing.sellerId !== decoded.uid) {
+
+        if (!existing) return res.status(404).json({ message: "Listing not found" });
+        if (existing.sellerId !== decoded.uid) {
           return res.status(403).json({ message: "Forbidden" });
         }
 
@@ -127,7 +147,7 @@ export default async function handler(req, res) {
           data: {
             title,
             platform,
-            price: Number(price),
+            price: numericPrice,
             description,
             image,
             metrics: metrics ?? undefined,
@@ -138,11 +158,12 @@ export default async function handler(req, res) {
         return res.status(200).json({ listing: updated });
       }
 
+      // Create
       const created = await prisma.listing.create({
         data: {
           title,
           platform,
-          price: Number(price),
+          price: numericPrice,
           description,
           image,
           metrics: metrics ?? null,
@@ -158,5 +179,4 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
-
 }
