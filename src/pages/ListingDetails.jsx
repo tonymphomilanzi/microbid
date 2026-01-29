@@ -160,9 +160,7 @@ export default function ListingDetails() {
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Purchase + chat require login. Browsing is public.
-            </p>
+           
           </div>
         </div>
       </div>
