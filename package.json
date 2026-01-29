@@ -8,6 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
+    "postinstall": "prisma generate",
+    "build": "prisma generate && vite build"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
