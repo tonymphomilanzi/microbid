@@ -12,11 +12,16 @@ export default function CreateListing() {
 
   useEffect(() => {
     let mounted = true;
+
     async function run() {
-      if (!editId) return setInitial(null);
+      if (!editId) {
+        setInitial(null);
+        return;
+      }
       const { listing } = await listingsService.getListing(editId);
       if (mounted) setInitial(listing);
     }
+
     run();
     return () => (mounted = false);
   }, [editId]);
