@@ -1,6 +1,7 @@
 import { prisma } from "../_lib/prisma.js";
 import { requireAuth } from "../_lib/auth.js";
-import { stripe } from "../_lib/stripe.js";
+//import { stripe } from "../_lib/stripe.js";
+import { getStripe } from "../_lib/stripe.js";
 
 export default async function handler(req, res) {
   try {
@@ -157,4 +158,5 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
+
 }
