@@ -96,16 +96,7 @@ export default function Home() {
                 </Button>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {stats.map((s) => (
-                  <Card key={s.label} className="border-border/60 bg-card/60 backdrop-blur">
-                    <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">{s.label}</div>
-                      <div className="mt-1 text-sm font-semibold">{s.value}</div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+             
             </div>
 
             {/* Right “preview panel” */}
