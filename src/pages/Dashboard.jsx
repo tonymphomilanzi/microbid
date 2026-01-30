@@ -271,7 +271,10 @@ export default function Dashboard() {
     setListingToDelete(l);
     setDeleteOpen(true);
   }}
-></Button>
+     
+>
+   <Trash2 className="h-4 w-4" />
+</Button>
 
                             <Button variant="secondary" size="sm" className="gap-2" asChild>
                               <Link to={`/listings/${l.id}`}>
