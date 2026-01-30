@@ -6,7 +6,17 @@ import { Card, CardContent } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import { listingsService } from "../services/listings.service";
-import { PlusCircle, Trash2, Pencil, Power, BarChart3 } from "lucide-react";
+import {
+  PlusCircle,
+  Trash2,
+  Pencil,
+  Power,
+  BarChart3,
+  MessageCircle,
+} from "lucide-react";
+
+import ChatDialog from "../components/chat/ChatDialog";
+import { chatService } from "../services/chat.service";
 
 function StatusBadge({ status }) {
   const map = {
@@ -26,12 +36,34 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
+  // Inbox
+  const [convosLoading, setConvosLoading] = useState(true);
+  const [inboxError, setInboxError] = useState("");
+  const [conversations, setConversations] = useState([]);
+  const [activeConvoId, setActiveConvoId] = useState("");
+  const [inboxOpen, setInboxOpen] = useState(false);
+
+  async function loadInbox() {
+    setInboxError("");
+    setConvosLoading(true);
+    try {
+      const { conversations } = await chatService.list();
+      setConversations(conversations || []);
+    } catch (e) {
+      setInboxError(e?.response?.data?.message || e.message || "Failed to load inbox");
+    } finally {
+      setConvosLoading(false);
+    }
+  }
+
   async function refresh() {
     setError("");
     setLoading(true);
     try {
       const { user } = await listingsService.me();
       setMe(user);
+      // Load inbox after user loads (auth required anyway)
+      await loadInbox();
     } catch (e) {
       setError(e?.response?.data?.message || e.message || "Failed to load dashboard");
     } finally {
@@ -87,12 +119,18 @@ export default function Dashboard() {
             <p className="text-sm text-muted-foreground">{me?.email}</p>
           </div>
 
-          <Button asChild className="gap-2">
-            <Link to="/create">
-              <PlusCircle className="h-4 w-4" />
-              Create Listing
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={refresh}>
+              Refresh
+            </Button>
+
+            <Button asChild className="gap-2">
+              <Link to="/create">
+                <PlusCircle className="h-4 w-4" />
+                Create Listing
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {error ? (
@@ -129,15 +167,24 @@ export default function Dashboard() {
         <Tabs defaultValue="listings">
           <TabsList>
             <TabsTrigger value="listings">My Listings</TabsTrigger>
+            <TabsTrigger value="inbox" className="gap-2">
+              <MessageCircle className="h-4 w-4" />
+              Inbox
+            </TabsTrigger>
             <TabsTrigger value="purchases">Purchases</TabsTrigger>
             <TabsTrigger value="sales">Sales</TabsTrigger>
           </TabsList>
 
+          {/* LISTINGS */}
           <TabsContent value="listings" className="mt-4 space-y-3">
             {loading ? (
-              <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent></Card>
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent>
+              </Card>
             ) : !me?.listings?.length ? (
-              <Card><CardContent className="p-6 text-sm text-muted-foreground">No listings yet.</CardContent></Card>
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">No listings yet.</CardContent>
+              </Card>
             ) : (
               <div className="grid gap-3">
                 {me.listings.map((l) => {
@@ -166,7 +213,16 @@ export default function Dashboard() {
                                 label="Engagement"
                                 value={m.engagementRate ? `${m.engagementRate}%` : "—"}
                               />
-                              <MiniMetric label="Monetized" value={typeof m.monetized === "boolean" ? (m.monetized ? "Yes" : "No") : "—"} />
+                              <MiniMetric
+                                label="Monetized"
+                                value={
+                                  typeof m.monetized === "boolean"
+                                    ? m.monetized
+                                      ? "Yes"
+                                      : "No"
+                                    : "—"
+                                }
+                              />
                             </div>
                           </div>
 
@@ -214,11 +270,89 @@ export default function Dashboard() {
             )}
           </TabsContent>
 
+          {/* INBOX */}
+          <TabsContent value="inbox" className="mt-4 space-y-3">
+            {inboxError ? (
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="p-5">
+                  <div className="text-sm font-medium">Could not load inbox</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{inboxError}</div>
+                  <div className="mt-4">
+                    <Button variant="outline" onClick={loadInbox}>
+                      Retry inbox
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {convosLoading ? (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">Loading inbox…</CardContent>
+              </Card>
+            ) : !conversations.length ? (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  No conversations yet. Buyers will message you from listing pages, and you’ll reply here.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-3">
+                {conversations.map((c) => {
+                  const last = c.messages?.[0]?.text ?? "No messages yet";
+                  const otherEmail = c.buyerId === me?.id ? c.seller?.email : c.buyer?.email;
+
+                  return (
+                    <Card
+                      key={c.id}
+                      className="cursor-pointer border-border/60 bg-card/60 hover:bg-muted/20"
+                      onClick={() => {
+                        setActiveConvoId(c.id);
+                        setInboxOpen(true);
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{otherEmail || "Unknown"}</div>
+                            <div className="text-sm text-muted-foreground truncate">
+                              {c.listing?.title}
+                            </div>
+                            <div className="mt-2 text-sm text-muted-foreground truncate">
+                              {last}
+                            </div>
+                          </div>
+
+                          <Badge variant="outline" className="shrink-0">
+                            {c.listing?.platform}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Chat dialog opens selected conversation */}
+            <ChatDialog
+              open={inboxOpen}
+              onOpenChange={setInboxOpen}
+              currentUser={me ? { uid: me.id } : null}
+              conversationId={activeConvoId || undefined}
+            />
+          </TabsContent>
+
+          {/* PURCHASES */}
           <TabsContent value="purchases" className="mt-4 space-y-3">
             {loading ? (
-              <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent></Card>
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent>
+              </Card>
             ) : !me?.purchases?.length ? (
-              <Card><CardContent className="p-6 text-sm text-muted-foreground">No purchases yet.</CardContent></Card>
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">No purchases yet.</CardContent>
+              </Card>
             ) : (
               <div className="grid gap-3">
                 {me.purchases.map((p) => (
@@ -235,11 +369,16 @@ export default function Dashboard() {
             )}
           </TabsContent>
 
+          {/* SALES */}
           <TabsContent value="sales" className="mt-4 space-y-3">
             {loading ? (
-              <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent></Card>
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent>
+              </Card>
             ) : !me?.sales?.length ? (
-              <Card><CardContent className="p-6 text-sm text-muted-foreground">No sales yet.</CardContent></Card>
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">No sales yet.</CardContent>
+              </Card>
             ) : (
               <div className="grid gap-3">
                 {me.sales.map((s) => (

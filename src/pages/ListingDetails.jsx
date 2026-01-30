@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthContext";
 import { listingsService } from "../services/listings.service";
 import { MessageCircle, CreditCard } from "lucide-react";
+import ChatDialog from "../components/chat/ChatDialog";
 
 export default function ListingDetails() {
   const { id } = useParams();
@@ -15,6 +16,8 @@ export default function ListingDetails() {
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState(null);
   const [error, setError] = useState("");
+
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -50,9 +53,9 @@ export default function ListingDetails() {
   }
 
   function chat() {
-    if (!user) return openAuthModal();
-    alert("Chat feature scaffold: add Conversation/Message endpoints to enable.");
-  }
+  if (!user) return openAuthModal();
+  setChatOpen(true);
+}
 
   if (loading) {
     return (
@@ -154,16 +157,32 @@ export default function ListingDetails() {
                 <CreditCard className="h-4 w-4" />
                 Buy with Stripe
               </Button>
-              <Button variant="outline" onClick={chat} className="gap-2">
-                <MessageCircle className="h-4 w-4" />
-                Message Seller
-              </Button>
+              
+
+        <Button
+          variant="outline"
+          onClick={chat}
+          className="gap-2"
+          disabled={Boolean(isOwner)}
+           title={isOwner ? "You cannot message your own listing" : "Message seller"}
+          >
+           <MessageCircle className="h-4 w-4" />
+           {isOwner ? "Your listing" : "Message Seller"}
+          </Button>
+          
             </div>
 
            
           </div>
         </div>
       </div>
+
+      <ChatDialog
+  open={chatOpen}
+  onOpenChange={setChatOpen}
+  currentUser={user}
+  listing={listing}
+/>
     </PageContainer>
   );
 }
