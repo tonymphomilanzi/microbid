@@ -53,9 +53,9 @@ export default function ListingDetails() {
   }
 
   function chat() {
-  if (!user) return openAuthModal();
-  setChatOpen(true);
-}
+    if (!user) return openAuthModal();
+    setChatOpen(true);
+  }
 
   if (loading) {
     return (
@@ -85,6 +85,7 @@ export default function ListingDetails() {
   }
 
   const m = listing.metrics || {};
+  const isOwner = Boolean(user && listing?.sellerId === user.uid);
 
   return (
     <PageContainer>
@@ -113,6 +114,7 @@ export default function ListingDetails() {
                   <div className="text-lg font-semibold">${listing.price}</div>
                 </CardContent>
               </Card>
+
               <Card>
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Seller</div>
@@ -157,32 +159,30 @@ export default function ListingDetails() {
                 <CreditCard className="h-4 w-4" />
                 Buy with Stripe
               </Button>
-              
 
-        <Button
-          variant="outline"
-          onClick={chat}
-          className="gap-2"
-          disabled={Boolean(isOwner)}
-           title={isOwner ? "You cannot message your own listing" : "Message seller"}
-          >
-           <MessageCircle className="h-4 w-4" />
-           {isOwner ? "Your listing" : "Message Seller"}
-          </Button>
-          
+              <Button
+                variant="outline"
+                onClick={chat}
+                className="gap-2"
+                disabled={isOwner}
+                title={isOwner ? "You cannot message your own listing" : "Message seller"}
+              >
+                <MessageCircle className="h-4 w-4" />
+                {isOwner ? "Your listing" : "Message Seller"}
+              </Button>
             </div>
 
-           
+      
           </div>
         </div>
-      </div>
 
-      <ChatDialog
-  open={chatOpen}
-  onOpenChange={setChatOpen}
-  currentUser={user}
-  listing={listing}
-/>
+        <ChatDialog
+          open={chatOpen}
+          onOpenChange={setChatOpen}
+          currentUser={user}
+          listing={listing}
+        />
+      </div>
     </PageContainer>
   );
 }
