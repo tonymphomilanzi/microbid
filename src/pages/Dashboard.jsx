@@ -273,7 +273,8 @@ export default function Dashboard() {
   }}
      
 >
-   <Trash2 className="h-4 w-4" />
+  {/*added trash icon*/}
+ <Trash2 className="h-4 w-4" />
 </Button>
 
                             <Button variant="secondary" size="sm" className="gap-2" asChild>
