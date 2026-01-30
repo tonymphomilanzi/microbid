@@ -81,14 +81,14 @@ export default function Home() {
 </h1>
 
 
-              <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
-                List YouTube channels, Instagram pages, TikTok profiles and more—with full
-                metrics shown on listing details. Browse freely, then login to message sellers or
-                purchase via Stripe/Paypal.
-              </p>
+             <p className="max-w-xl text-base text-muted-foreground">
+  A secure marketplace for YouTube channels, Instagram pages, TikTok profiles,
+  and more — complete with verified metrics escrow secure.
+</p>
+
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button asChild className="gap-2">
+                <Button asChild size="lg" className="gap-2 px-6">
                   <Link to="/marketplace">
                     Browse Marketplace <ArrowRight className="h-4 w-4" />
                   </Link>
@@ -105,7 +105,7 @@ export default function Home() {
 
             {/* Right “preview panel” */}
             <div className="space-y-4">
-              <Card className="border-border/60 bg-card/60 backdrop-blur">
+              <Card className="rounded-2xl bg-gradient-to-b from-card/80 to-card/40 backdrop-blur-xl shadow-md">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
