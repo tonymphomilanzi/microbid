@@ -73,9 +73,13 @@ export default function Home() {
                 </Badge>
               </div>
 
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">
-               Buy and sell social pages, channels, and profiles with microbid.
-              </h1>
+              <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
+  Buy & sell social media assets
+  <span className="block bg-gradient-to-r from-primary to-yellow-400 bg-clip-text text-transparent">
+    with confidence
+  </span>
+</h1>
+
 
               <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
                 List YouTube channels, Instagram pages, TikTok profiles and more—with full
