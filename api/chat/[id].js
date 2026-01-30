@@ -31,11 +31,26 @@ export default async function handler(req, res) {
       });
 
       if (!convo) return res.status(404).json({ message: "Conversation not found" });
-
       const isParticipant = convo.buyerId === uid || convo.sellerId === uid;
       if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-      return res.status(200).json({ conversation: convo });
+      // Mark as read when opened
+      if (convo.buyerId === uid && convo.buyerUnread > 0) {
+        await prisma.conversation.update({
+          where: { id },
+          data: { buyerUnread: 0 },
+        });
+      }
+      if (convo.sellerId === uid && convo.sellerUnread > 0) {
+        await prisma.conversation.update({
+          where: { id },
+          data: { sellerUnread: 0 },
+        });
+      }
+
+      // Return fresh view with unreadCount for this user
+      const unreadCount = convo.buyerId === uid ? convo.buyerUnread : convo.sellerUnread;
+      return res.status(200).json({ conversation: { ...convo, unreadCount } });
     }
 
     if (req.method === "POST") {
@@ -56,16 +71,20 @@ export default async function handler(req, res) {
       });
 
       const message = await prisma.message.create({
-        data: {
-          conversationId: id,
-          senderId: uid,
-          text,
-        },
+        data: { conversationId: id, senderId: uid, text },
       });
+
+      // Update lastMessageAt + increment unread for the other participant
+      const senderIsBuyer = convo.buyerId === uid;
 
       await prisma.conversation.update({
         where: { id },
-        data: {},
+        data: {
+          lastMessageAt: new Date(),
+          ...(senderIsBuyer
+            ? { sellerUnread: { increment: 1 } }
+            : { buyerUnread: { increment: 1 } }),
+        },
       });
 
       return res.status(201).json({ message });

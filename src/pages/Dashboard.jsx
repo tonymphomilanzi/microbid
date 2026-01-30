@@ -168,9 +168,14 @@ export default function Dashboard() {
           <TabsList>
             <TabsTrigger value="listings">My Listings</TabsTrigger>
             <TabsTrigger value="inbox" className="gap-2">
-              <MessageCircle className="h-4 w-4" />
-              Inbox
-            </TabsTrigger>
+  <MessageCircle className="h-4 w-4" />
+  Inbox
+  {conversations?.some((c) => c.unreadCount > 0) ? (
+    <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+      {conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
+    </span>
+  ) : null}
+</TabsTrigger>
             <TabsTrigger value="purchases">Purchases</TabsTrigger>
             <TabsTrigger value="sales">Sales</TabsTrigger>
           </TabsList>
@@ -272,76 +277,127 @@ export default function Dashboard() {
 
           {/* INBOX */}
           <TabsContent value="inbox" className="mt-4 space-y-3">
-            {inboxError ? (
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-5">
-                  <div className="text-sm font-medium">Could not load inbox</div>
-                  <div className="mt-1 text-sm text-muted-foreground">{inboxError}</div>
-                  <div className="mt-4">
-                    <Button variant="outline" onClick={loadInbox}>
-                      Retry inbox
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
+  {inboxError ? (
+    <Card className="border-border/60 bg-card/60">
+      <CardContent className="p-5">
+        <div className="text-sm font-medium">Could not load inbox</div>
+        <div className="mt-1 text-sm text-muted-foreground">{inboxError}</div>
+        <div className="mt-4">
+          <Button variant="outline" onClick={loadInbox}>Retry inbox</Button>
+        </div>
+      </CardContent>
+    </Card>
+  ) : null}
 
-            {convosLoading ? (
-              <Card>
-                <CardContent className="p-6 text-sm text-muted-foreground">Loading inbox…</CardContent>
-              </Card>
-            ) : !conversations.length ? (
-              <Card>
-                <CardContent className="p-6 text-sm text-muted-foreground">
-                  No conversations yet. Buyers will message you from listing pages, and you’ll reply here.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-3">
-                {conversations.map((c) => {
-                  const last = c.messages?.[0]?.text ?? "No messages yet";
-                  const otherEmail = c.buyerId === me?.id ? c.seller?.email : c.buyer?.email;
+  {convosLoading ? (
+    <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading inbox…</CardContent></Card>
+  ) : !conversations.length ? (
+    <Card><CardContent className="p-6 text-sm text-muted-foreground">No conversations yet.</CardContent></Card>
+  ) : (
+    <div className="grid gap-2">
+      {conversations.map((c) => {
+        const lastText = c.messages?.[0]?.text ?? "No messages yet";
+        const otherEmail = c.buyerId === me?.id ? c.seller?.email : c.buyer?.email;
+        const otherName = otherEmail?.split("@")[0] || "User";
+        const initials = otherName
+          .split(/[.\s_-]+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((p) => p[0]?.toUpperCase())
+          .join("");
 
-                  return (
-                    <Card
-                      key={c.id}
-                      className="cursor-pointer border-border/60 bg-card/60 hover:bg-muted/20"
-                      onClick={() => {
-                        setActiveConvoId(c.id);
-                        setInboxOpen(true);
-                      }}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{otherEmail || "Unknown"}</div>
-                            <div className="text-sm text-muted-foreground truncate">
-                              {c.listing?.title}
-                            </div>
-                            <div className="mt-2 text-sm text-muted-foreground truncate">
-                              {last}
-                            </div>
-                          </div>
+        const unread = (c.unreadCount || 0) > 0;
 
-                          <Badge variant="outline" className="shrink-0">
-                            {c.listing?.platform}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+        const ts = c.lastMessageAt || c.updatedAt;
+        const timeLabel = ts ? new Date(ts).toLocaleString() : "";
+
+        return (
+          <button
+            key={c.id}
+            onClick={() => {
+              setActiveConvoId(c.id);
+              setInboxOpen(true);
+            }}
+            className={[
+              "w-full text-left rounded-xl border p-3 transition",
+              "border-border/60 bg-card/60 hover:bg-muted/20",
+              unread ? "ring-1 ring-primary/30 bg-primary/5" : "",
+            ].join(" ")}
+          >
+            <div className="flex items-center gap-3">
+              {/* Avatar */}
+              <div
+                className={[
+                  "h-10 w-10 shrink-0 rounded-full grid place-items-center border text-sm font-semibold",
+                  unread
+                    ? "border-primary/30 bg-primary/15 text-primary"
+                    : "border-border/60 bg-muted/20 text-muted-foreground",
+                ].join(" ")}
+              >
+                {initials || "U"}
               </div>
-            )}
 
-            {/* Chat dialog opens selected conversation */}
-            <ChatDialog
-              open={inboxOpen}
-              onOpenChange={setInboxOpen}
-              currentUser={me ? { uid: me.id } : null}
-              conversationId={activeConvoId || undefined}
-            />
-          </TabsContent>
+              {/* Main */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
+                      {otherEmail || "Unknown"}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <Badge variant="outline" className="border-border/60 bg-muted/20">
+                        {c.listing?.platform}
+                      </Badge>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {c.listing?.title}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 text-xs text-muted-foreground">
+                    {timeLabel}
+                  </div>
+                </div>
+
+                <div className={["mt-2 truncate text-sm", unread ? "text-foreground" : "text-muted-foreground"].join(" ")}>
+                  {lastText}
+                </div>
+              </div>
+
+              {/* Listing thumb + unread badge */}
+              <div className="flex items-center gap-2">
+                {unread ? (
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                    {c.unreadCount}
+                  </span>
+                ) : null}
+
+                {c.listing?.image ? (
+                  <img
+                    src={c.listing.image}
+                    alt="Listing"
+                    className="h-10 w-14 rounded-md object-cover border border-border/60"
+                  />
+                ) : null}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  )}
+
+  <ChatDialog
+    open={inboxOpen}
+    onOpenChange={(o) => {
+      setInboxOpen(o);
+      // when closing chat, refresh inbox so unread counts update immediately
+      if (!o) loadInbox();
+    }}
+    currentUser={me ? { uid: me.id } : null}
+    conversationId={activeConvoId || undefined}
+  />
+</TabsContent>
 
           {/* PURCHASES */}
           <TabsContent value="purchases" className="mt-4 space-y-3">

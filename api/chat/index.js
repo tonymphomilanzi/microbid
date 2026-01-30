@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       const rawListingId = req.query?.listingId;
       const listingId = Array.isArray(rawListingId) ? rawListingId[0] : rawListingId;
 
-      // Fetch conversation by listingId (buyer side)
+      // buyer fetch convo by listingId
       if (listingId) {
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
@@ -51,12 +51,10 @@ export default async function handler(req, res) {
         return res.status(200).json({ conversation: conversation ?? null });
       }
 
-      // List all my conversations (buyer OR seller)
+      // list all my conversations
       const conversations = await prisma.conversation.findMany({
-        where: {
-          OR: [{ buyerId: uid }, { sellerId: uid }],
-        },
-        orderBy: { updatedAt: "desc" },
+        where: { OR: [{ buyerId: uid }, { sellerId: uid }] },
+        orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
         include: {
           listing: { select: { id: true, title: true, image: true, platform: true } },
           buyer: { select: { id: true, email: true } },
@@ -65,10 +63,17 @@ export default async function handler(req, res) {
         },
       });
 
-      return res.status(200).json({ conversations });
+      // Add unreadCount specific to current user
+      const enriched = conversations.map((c) => ({
+        ...c,
+        unreadCount: c.buyerId === uid ? c.buyerUnread : c.sellerUnread,
+      }));
+
+      return res.status(200).json({ conversations: enriched });
     }
 
     // ---------- POST ----------
+    // buyer sends message to seller from listing page (creates conversation if needed)
     if (req.method === "POST") {
       const body = readJson(req);
       const listingId = body.listingId;
@@ -84,20 +89,17 @@ export default async function handler(req, res) {
       });
 
       if (!listing) return res.status(404).json({ message: "Listing not found" });
-
-      // buyer -> seller only from listing
       if (listing.sellerId === uid) {
         return res.status(400).json({ message: "You cannot message your own listing." });
       }
 
-      // Ensure current user exists
+      // Ensure users exist
       await prisma.user.upsert({
         where: { id: uid },
         update: { email: decoded.email ?? "unknown" },
         create: { id: uid, email: decoded.email ?? "unknown" },
       });
 
-      // Ensure seller exists
       await prisma.user.upsert({
         where: { id: listing.sellerId },
         update: {},
@@ -113,25 +115,20 @@ export default async function handler(req, res) {
           },
         },
         update: {},
-        create: {
-          listingId,
-          buyerId: uid,
-          sellerId: listing.sellerId,
-        },
+        create: { listingId, buyerId: uid, sellerId: listing.sellerId },
       });
 
       const message = await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          senderId: uid,
-          text,
-        },
+        data: { conversationId: conversation.id, senderId: uid, text },
       });
 
-      // "touch" updatedAt
+      // bump ordering + unread for seller
       await prisma.conversation.update({
         where: { id: conversation.id },
-        data: {},
+        data: {
+          lastMessageAt: new Date(),
+          sellerUnread: { increment: 1 },
+        },
       });
 
       return res.status(201).json({ conversationId: conversation.id, message });
