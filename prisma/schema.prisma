@@ -8,7 +8,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-
 enum ListingStatus {
   ACTIVE
   INACTIVE
@@ -27,15 +26,15 @@ enum UserTier {
 }
 
 model User {
-  id         String   @id
-  email      String
-  createdAt  DateTime @default(now())
+  id        String   @id
+  email     String
+  createdAt DateTime @default(now())
 
-  role       UserRole @default(USER)
-  isVerified Boolean  @default(false)
+  role       UserRole  @default(USER)
+  isVerified Boolean   @default(false)
   verifiedAt DateTime?
 
-  tier       UserTier @default(FREE)
+  tier UserTier @default(FREE)
 
   listings  Listing[]
   purchases Purchase[] @relation("buyerPurchases")
@@ -43,7 +42,7 @@ model User {
 
   buyerConversations  Conversation[] @relation("buyerConversations")
   sellerConversations Conversation[] @relation("sellerConversations")
-  messages Message[]
+  messages            Message[]
 
   subscription UserSubscription?
 }
@@ -58,15 +57,15 @@ model Listing {
   metrics     Json?
   status      ListingStatus @default(ACTIVE)
 
-  categoryId  String?
-  category    Category?     @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
-  sellerId    String
-  seller      User          @relation(fields: [sellerId], references: [id])
+  sellerId String
+  seller   User   @relation(fields: [sellerId], references: [id])
 
-  buyerId     String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  buyerId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   purchases          Purchase[]
   conversations      Conversation[]
@@ -74,15 +73,15 @@ model Listing {
 }
 
 model Purchase {
-  id              String   @id @default(cuid())
-  listingId       String
-  listing         Listing  @relation(fields: [listingId], references: [id])
+  id        String  @id @default(cuid())
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
 
-  buyerId         String
-  buyer           User     @relation("buyerPurchases", fields: [buyerId], references: [id])
+  buyerId String
+  buyer   User   @relation("buyerPurchases", fields: [buyerId], references: [id])
 
-  sellerId        String
-  seller          User     @relation("sellerSales", fields: [sellerId], references: [id])
+  sellerId String
+  seller   User   @relation("sellerSales", fields: [sellerId], references: [id])
 
   amount          Int
   stripeSessionId String?
@@ -93,23 +92,22 @@ model Purchase {
   @@index([listingId])
 }
 
-
 model Conversation {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   listingId String
-  listing   Listing  @relation(fields: [listingId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id])
 
-  buyerId   String
-  buyer     User     @relation("buyerConversations", fields: [buyerId], references: [id])
+  buyerId String
+  buyer   User   @relation("buyerConversations", fields: [buyerId], references: [id])
 
-  sellerId  String
-  seller    User     @relation("sellerConversations", fields: [sellerId], references: [id])
+  sellerId String
+  seller   User   @relation("sellerConversations", fields: [sellerId], references: [id])
 
-  messages  Message[]
+  messages Message[]
 
   // NEW: unread + ordering
-  buyerUnread   Int      @default(0)
-  sellerUnread  Int      @default(0)
+  buyerUnread   Int       @default(0)
+  sellerUnread  Int       @default(0)
   lastMessageAt DateTime?
 
   createdAt DateTime @default(now())
@@ -125,35 +123,33 @@ model Message {
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  senderId       String
-  sender         User         @relation(fields: [senderId], references: [id])
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id])
 
-  text           String
-  createdAt      DateTime @default(now())
+  text      String
+  createdAt DateTime @default(now())
 
   @@index([conversationId])
   @@index([senderId])
 }
 
-
 model UsageMonth {
-  id               String   @id @default(cuid())
-  userId           String
-  monthKey         String   // "2026-01"
-  listingsCreated  Int      @default(0)
-  conversationsStarted Int  @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  userId               String
+  monthKey             String // "2026-01"
+  listingsCreated      Int      @default(0)
+  conversationsStarted Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([userId, monthKey])
   @@index([userId])
 }
 
-
 model Plan {
   id        String   @id @default(cuid())
   name      String   @unique // FREE, PREMIUM
-  features  Json     // { listingsPerMonth: 3, conversationsPerMonth: 10 }
+  features  Json // { listingsPerMonth: 3, conversationsPerMonth: 10 }
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -161,18 +157,17 @@ model Plan {
 }
 
 model UserSubscription {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  planId    String
-  plan      Plan     @relation(fields: [planId], references: [id])
+  planId String
+  plan   Plan   @relation(fields: [planId], references: [id])
 
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
 
 enum PaymentProvider {
   STRIPE
@@ -206,43 +201,43 @@ enum EscrowStatus {
 }
 
 model EscrowTransaction {
-  id            String      @id @default(cuid())
-  listingId     String
-  listing       Listing     @relation(fields: [listingId], references: [id])
+  id        String  @id @default(cuid())
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
 
   buyerId       String
   sellerId      String
-  escrowAgentId String      // admin/system account uid
+  escrowAgentId String // admin/system account uid
 
-  mode          EscrowMode
-  provider      PaymentProvider
-  status        EscrowStatus @default(INITIATED)
+  mode     EscrowMode
+  provider PaymentProvider
+  status   EscrowStatus    @default(INITIATED)
 
-  priceCents    Int
-  feeBps        Int
-  feeCents      Int
-  minFeeCents   Int
-  discounts     Json?
+  priceCents  Int
+  feeBps      Int
+  feeCents    Int
+  minFeeCents Int
+  discounts   Json?
 
   totalChargeCents Int
 
-  fundedAt        DateTime?
+  fundedAt DateTime?
 
   // 7-day control-panel rule timer
   ownershipReadyAt DateTime?
 
   // buyer not clicking "received" fallback timer AFTER transfer
-  autoReleaseAt   DateTime?
+  autoReleaseAt DateTime?
 
-  releasedAt      DateTime?
+  releasedAt DateTime?
 
-  providerRef   String?
-  notes         String?
+  providerRef String?
+  notes       String?
 
-  proofs        EscrowProof[]
+  proofs EscrowProof[]
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([buyerId])
   @@index([sellerId])
@@ -257,18 +252,17 @@ enum ProofKind {
 }
 
 model EscrowProof {
-  id        String   @id @default(cuid())
-  escrowId  String
-  escrow    EscrowTransaction @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  id       String            @id @default(cuid())
+  escrowId String
+  escrow   EscrowTransaction @relation(fields: [escrowId], references: [id], onDelete: Cascade)
 
   kind      ProofKind
   url       String?
   note      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([escrowId])
 }
-
 
 model Category {
   id          String   @id @default(cuid())
@@ -281,7 +275,6 @@ model Category {
 
   listings Listing[]
 }
-
 
 enum AdPlacement {
   HOME_HERO
@@ -302,16 +295,16 @@ model Ad {
   placement AdPlacement
   type      AdType
 
-  title     String?
-  imageUrl  String?
-  linkUrl   String?
-  html      String?     // for AdSense snippet (optional)
+  title    String?
+  imageUrl String?
+  linkUrl  String?
+  html     String? // for AdSense snippet (optional)
 
-  isActive  Boolean     @default(true)
-  priority  Int         @default(0)
+  isActive Boolean @default(true)
+  priority Int     @default(0)
 
-  startAt   DateTime?
-  endAt     DateTime?
+  startAt DateTime?
+  endAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
