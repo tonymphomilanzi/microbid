@@ -23,6 +23,12 @@ model User {
   listings  Listing[]
   purchases Purchase[] @relation("buyerPurchases")
   sales     Purchase[] @relation("sellerSales")
+
+  //chat 
+  buyerConversations  Conversation[] @relation("buyerConversations")
+  sellerConversations Conversation[] @relation("sellerConversations")
+
+  messages Message[]
 }
 
 model Listing {
@@ -43,6 +49,8 @@ model Listing {
   updatedAt   DateTime     @updatedAt
 
   purchases   Purchase[]
+  
+  conversations Conversation[]
 }
 
 model Purchase {
@@ -63,4 +71,41 @@ model Purchase {
   @@index([buyerId])
   @@index([sellerId])
   @@index([listingId])
+}
+
+
+model Conversation {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+
+  buyerId   String
+  buyer     User     @relation("buyerConversations", fields: [buyerId], references: [id])
+
+  sellerId  String
+  seller    User     @relation("sellerConversations", fields: [sellerId], references: [id])
+
+  messages  Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([listingId, buyerId, sellerId])
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+
+  text           String
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
 }
