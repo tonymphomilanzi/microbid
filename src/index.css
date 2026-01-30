@@ -4,7 +4,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@layer base {
+  html {
+    font-family: theme("fontFamily.sans");
+  }
 
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer base {
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
+  }
+}
 
 :root {
   --radius: 0.9rem;
