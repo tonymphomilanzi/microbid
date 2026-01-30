@@ -48,27 +48,26 @@ model User {
 }
 
 model Listing {
-  id          String        @id @default(cuid())
+  id          String       @id @default(cuid())
   title       String
-  platform    String
+  platform    String       // keep as String for compatibility
   price       Int
   description String
   image       String
   metrics     Json?
   status      ListingStatus @default(ACTIVE)
 
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id])
+  categoryId  String?
+  category    Category?     @relation(fields: [categoryId], references: [id])
 
-  sellerId String
-  seller   User   @relation(fields: [sellerId], references: [id])
+  sellerId    String
+  seller      User         @relation(fields: [sellerId], references: [id])
 
-  buyerId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  purchases          Purchase[]
-  conversations      Conversation[]
+  purchases   Purchase[]
+  conversations Conversation[]
   escrowTransactions EscrowTransaction[]
 }
 
@@ -270,7 +269,7 @@ model Category {
   slug        String   @unique
   order       Int      @default(0)
   isActive    Boolean  @default(true)
-  isAdminOnly Boolean  @default(false) // Streaming Kit lives here
+  isAdminOnly Boolean  @default(false) // "Streaming Kit" => true
   createdAt   DateTime @default(now())
 
   listings Listing[]
@@ -295,19 +294,27 @@ model Ad {
   placement AdPlacement
   type      AdType
 
-  title    String?
-  imageUrl String?
-  linkUrl  String?
-  html     String? // for AdSense snippet (optional)
+  title     String?
+  imageUrl  String?
+  linkUrl   String?
+  html      String?     // optional Adsense snippet later
 
-  isActive Boolean @default(true)
-  priority Int     @default(0)
-
-  startAt DateTime?
-  endAt   DateTime?
+  isActive  Boolean     @default(true)
+  priority  Int         @default(0)
+  startAt   DateTime?
+  endAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([placement])
+}
+
+model Platform {
+  id        String   @id @default(cuid())
+  name      String   // "YouTube"
+  slug      String   @unique // "youtube"
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
