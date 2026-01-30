@@ -49,7 +49,7 @@ export function computeServiceFee({
     discounts.push({ code: "BUYER_VIP", bps: 200 });
   }
 
-  // Repeat discount: per-user (regardless of counterparty)
+  // cumulative per-user (regardless of counterparty)
   if (buyerCompletedDeals >= 3) {
     discountBps += 50;
     discounts.push({ code: "BUYER_3_PLUS_DEALS", bps: 50 });
@@ -60,17 +60,10 @@ export function computeServiceFee({
   }
 
   const minFeeCents = minFeeForPlatformCents(platform);
-
   const feeBps = clamp(BASE_BPS - discountBps, MIN_BPS, MAX_BPS);
 
   const rawFeeCents = Math.round((priceCents * feeBps) / 10000);
   const feeCents = Math.max(minFeeCents, rawFeeCents);
 
-  return {
-    feeBps,
-    feePercent: feeBps / 100,
-    feeCents,
-    minFeeCents,
-    discounts,
-  };
+  return { feeBps, feeCents, minFeeCents, discounts };
 }

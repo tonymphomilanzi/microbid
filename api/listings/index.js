@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       const listings = await prisma.listing.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        include: { seller: { select: { id: true, email: true } } },
+        include: { seller: { select: { id: true, email: true, isVerified: true, tier: true } } },
       });
 
       return res.status(200).json({ listings });
