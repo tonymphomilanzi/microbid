@@ -20,14 +20,22 @@ enum UserRole {
   ADMIN
 }
 
+enum UserTier {
+  FREE
+  PRO
+  VIP
+}
+
 model User {
-  id        String   @id // firebase uid
-  email     String
-  createdAt DateTime @default(now())
+  id         String   @id
+  email      String
+  createdAt  DateTime @default(now())
 
   role       UserRole @default(USER)
   isVerified Boolean  @default(false)
   verifiedAt DateTime?
+
+  tier       UserTier @default(FREE)
 
   listings  Listing[]
   purchases Purchase[] @relation("buyerPurchases")
@@ -172,10 +180,23 @@ enum PaymentProvider {
   MANUAL
 }
 
+enum EscrowMode {
+  FASTEST
+  SAFEST
+}
+
 enum EscrowStatus {
   INITIATED
-  FUNDED
-  DELIVERED
+  FEE_PAID
+  FULLY_PAID
+  AWAITING_SELLER_ASSIGN_ESCROW
+  ESCROW_ASSIGNED
+  BUYER_ASSIGNED_MANAGER
+  WAITING_7_DAYS
+  READY_FOR_FINAL_TRANSFER
+  AWAITING_BUYER_PAYMENT_TO_SELLER
+  AWAITING_SELLER_CONFIRMATION
+  TRANSFERRED_TO_BUYER
   RELEASED
   DISPUTED
   REFUNDED
@@ -183,29 +204,35 @@ enum EscrowStatus {
 }
 
 model EscrowTransaction {
-  id          String          @id @default(cuid())
-  listingId   String
-  listing     Listing         @relation(fields: [listingId], references: [id])
+  id            String      @id @default(cuid())
+  listingId     String
+  listing       Listing     @relation(fields: [listingId], references: [id])
 
-  buyerId     String
-  sellerId    String
+  buyerId       String
+  sellerId      String
+  escrowAgentId String      // admin/system account uid
 
-  amount      Int
-  currency    String          @default("USD")
+  mode          EscrowMode
+  status        EscrowStatus @default(INITIATED)
 
-  provider    PaymentProvider
-  status      EscrowStatus    @default(INITIATED)
+  priceCents    Int
+  feeBps        Int          // e.g. 800 = 8.00%
+  feeCents      Int
+  minFeeCents   Int
+  discounts     Json?
 
-  fundedAt    DateTime?
-  deliveredAt DateTime?
-  releasedAt  DateTime?
+  totalChargeCents Int       // FASTEST: price+fee, SAFEST: fee only
 
-  autoReleaseAt DateTime?     // for “auto release after X days”
-  providerRef String?
-  notes       String?
+  fundedAt      DateTime?
+  deliveredAt   DateTime?
+  autoReleaseAt DateTime?    // deliveredAt + 7 days
+  releasedAt    DateTime?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  providerRef   String?
+  notes         String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([buyerId])
   @@index([sellerId])
