@@ -17,6 +17,7 @@ import {
 
 import ChatDialog from "../components/chat/ChatDialog";
 import { chatService } from "../services/chat.service";
+import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
 
 function StatusBadge({ status }) {
   const map = {
@@ -42,6 +43,10 @@ export default function Dashboard() {
   const [conversations, setConversations] = useState([]);
   const [activeConvoId, setActiveConvoId] = useState("");
   const [inboxOpen, setInboxOpen] = useState(false);
+  //delete state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [listingToDelete, setListingToDelete] = useState(null);
 
   async function loadInbox() {
     setInboxError("");
@@ -91,10 +96,19 @@ export default function Dashboard() {
     };
   }, [me]);
 
-  async function removeListing(id) {
-    await listingsService.deleteListing(id);
-    refresh();
+ async function removeListingConfirmed() {
+  if (!listingToDelete?.id) return;
+
+  setDeleteLoading(true);
+  try {
+    await listingsService.deleteListing(listingToDelete.id);
+    setDeleteOpen(false);
+    setListingToDelete(null);
+    await refresh();
+  } finally {
+    setDeleteLoading(false);
   }
+}
 
   async function toggleActive(listing) {
     await listingsService.upsertListing({
@@ -249,15 +263,15 @@ export default function Dashboard() {
                               </Link>
                             </Button>
 
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => removeListing(l.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </Button>
+                         <Button
+  variant="destructive"
+  size="sm"
+  className="gap-2"
+  onClick={() => {
+    setListingToDelete(l);
+    setDeleteOpen(true);
+  }}
+></Button>
 
                             <Button variant="secondary" size="sm" className="gap-2" asChild>
                               <Link to={`/listings/${l.id}`}>
@@ -452,6 +466,23 @@ export default function Dashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <ConfirmDeleteDialog
+  open={deleteOpen}
+  onOpenChange={(o) => {
+    setDeleteOpen(o);
+    if (!o) setListingToDelete(null);
+  }}
+  loading={deleteLoading}
+  title="Delete this listing?"
+  description={
+    listingToDelete
+      ? `You're about to delete "${listingToDelete.title}". This cannot be undone.`
+      : "This action cannot be undone."
+  }
+  confirmText="Delete listing"
+  onConfirm={removeListingConfirmed}
+/>
     </PageContainer>
   );
 }
