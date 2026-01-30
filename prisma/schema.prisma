@@ -15,20 +15,29 @@ enum ListingStatus {
   SOLD
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id        String   @id // firebase uid
   email     String
   createdAt DateTime @default(now())
 
+  role       UserRole @default(USER)
+  isVerified Boolean  @default(false)
+  verifiedAt DateTime?
+
   listings  Listing[]
   purchases Purchase[] @relation("buyerPurchases")
   sales     Purchase[] @relation("sellerSales")
 
-  //chat 
   buyerConversations  Conversation[] @relation("buyerConversations")
   sellerConversations Conversation[] @relation("sellerConversations")
-
   messages Message[]
+
+  subscription UserSubscription?
 }
 
 model Listing {
@@ -113,4 +122,91 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+}
+
+
+model UsageMonth {
+  id               String   @id @default(cuid())
+  userId           String
+  monthKey         String   // "2026-01"
+  listingsCreated  Int      @default(0)
+  conversationsStarted Int  @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, monthKey])
+  @@index([userId])
+}
+
+
+model Plan {
+  id        String   @id @default(cuid())
+  name      String   @unique // FREE, PREMIUM
+  features  Json     // { listingsPerMonth: 3, conversationsPerMonth: 10 }
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  subscriptions UserSubscription[]
+}
+
+model UserSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+  BTC
+  MOMO
+  MANUAL
+}
+
+enum EscrowStatus {
+  INITIATED
+  FUNDED
+  DELIVERED
+  RELEASED
+  DISPUTED
+  REFUNDED
+  CANCELLED
+}
+
+model EscrowTransaction {
+  id          String          @id @default(cuid())
+  listingId   String
+  listing     Listing         @relation(fields: [listingId], references: [id])
+
+  buyerId     String
+  sellerId    String
+
+  amount      Int
+  currency    String          @default("USD")
+
+  provider    PaymentProvider
+  status      EscrowStatus    @default(INITIATED)
+
+  fundedAt    DateTime?
+  deliveredAt DateTime?
+  releasedAt  DateTime?
+
+  autoReleaseAt DateTime?     // for “auto release after X days”
+  providerRef String?
+  notes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
 }
