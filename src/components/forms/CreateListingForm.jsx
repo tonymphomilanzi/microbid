@@ -12,15 +12,12 @@ import { listingsService } from "../../services/listings.service";
 import ImageUpload from "./ImageUpload";
 import { Info, Loader2 } from "lucide-react";
 
-const PLATFORMS = ["YouTube", "Instagram", "TikTok", "X", "Facebook"];
-
 const defaultMetrics = (platform) => {
-  // keep it simple but clear; stored as JSON in DB
   if (platform === "YouTube") {
     return {
-      followers: 0, // subs
-      avgViews: 0, // avg views last 10 videos
-      engagementRate: 0, // optional
+      followers: 0,
+      avgViews: 0,
+      engagementRate: 0,
       monetized: false,
       niche: "",
       countryTop: "",
@@ -38,13 +35,20 @@ const defaultMetrics = (platform) => {
 
 export default function CreateListingForm({ initial }) {
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(false);
+  const [metaLoading, setMetaLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [platforms, setPlatforms] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [meRole, setMeRole] = useState("USER"); // from /api/me
 
   const [form, setForm] = useState({
     id: "",
     title: "",
-    platform: "YouTube",
+    platform: "",
+    categoryId: "",
     price: "",
     description: "",
     image: "",
@@ -52,7 +56,52 @@ export default function CreateListingForm({ initial }) {
     metrics: defaultMetrics("YouTube"),
   });
 
-  // CRITICAL: when initial loads (async), update the form state (fixes edit not prefilling)
+  // Load platforms + categories + role
+  useEffect(() => {
+    let mounted = true;
+
+    async function run() {
+      setMetaLoading(true);
+      try {
+        const [{ platforms }, { categories }, me] = await Promise.all([
+          listingsService.getPlatforms(),
+          listingsService.getCategories(),
+          listingsService.me(),
+        ]);
+
+        if (!mounted) return;
+
+        setPlatforms(platforms ?? []);
+        setMeRole(me?.user?.role ?? "USER");
+
+        // Hide admin-only categories for non-admin
+        const filteredCats =
+          (categories ?? []).filter((c) => (me?.user?.role === "ADMIN" ? true : !c.isAdminOnly));
+
+        setCategories(filteredCats);
+
+        // Set defaults for new listing only (not edit)
+        setForm((f) => {
+          const defaultPlatform = f.platform || (platforms?.[0]?.name ?? "YouTube");
+          const defaultCategoryId = f.categoryId || (filteredCats?.[0]?.id ?? "");
+
+          return {
+            ...f,
+            platform: defaultPlatform,
+            categoryId: defaultCategoryId,
+            metrics: defaultMetrics(defaultPlatform),
+          };
+        });
+      } finally {
+        if (mounted) setMetaLoading(false);
+      }
+    }
+
+    run();
+    return () => (mounted = false);
+  }, []);
+
+  // Prefill edit
   useEffect(() => {
     if (!initial) return;
 
@@ -60,6 +109,7 @@ export default function CreateListingForm({ initial }) {
       id: initial.id,
       title: initial.title ?? "",
       platform: initial.platform ?? "YouTube",
+      categoryId: initial.categoryId ?? "",
       price: String(initial.price ?? ""),
       description: initial.description ?? "",
       image: initial.image ?? "",
@@ -68,9 +118,10 @@ export default function CreateListingForm({ initial }) {
     });
   }, [initial]);
 
-  // When platform changes on a new listing (not editing), reset metrics template
+  // Reset metrics when platform changes (new listing only)
   useEffect(() => {
-    if (form.id) return; // don't overwrite metrics on edit
+    if (form.id) return;
+    if (!form.platform) return;
     setForm((f) => ({ ...f, metrics: defaultMetrics(f.platform) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.platform]);
@@ -90,7 +141,7 @@ export default function CreateListingForm({ initial }) {
         followersLabel: "Followers",
         followersHelp: "Total followers on the page.",
         avgViewsLabel: "Avg views (Reels)",
-        avgViewsHelp: "Average views per Reel (rough estimate is OK).",
+        avgViewsHelp: "Average views per Reel (estimate is OK).",
         engagementHelp: "Engagement rate (%) based on likes/comments/saves.",
       };
     }
@@ -117,7 +168,8 @@ export default function CreateListingForm({ initial }) {
     form.platform &&
     String(form.price).trim() &&
     form.description.trim() &&
-    form.image;
+    form.image &&
+    !metaLoading;
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -134,6 +186,7 @@ export default function CreateListingForm({ initial }) {
         ...form,
         price: Number(form.price),
         metrics: form.metrics ?? null,
+        categoryId: form.categoryId || null,
       };
 
       const { listing } = await listingsService.upsertListing(payload);
@@ -151,7 +204,7 @@ export default function CreateListingForm({ initial }) {
         <CardTitle className="flex flex-wrap items-center justify-between gap-2">
           <span>{form.id ? "Edit Listing" : "Create Listing"}</span>
           <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-            {form.platform}
+            {form.platform || "Platform"}
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -182,19 +235,41 @@ export default function CreateListingForm({ initial }) {
                     className="mt-1 h-10 w-full rounded-md border border-border/60 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                     value={form.platform}
                     onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))}
+                    disabled={metaLoading}
                   >
-                    {PLATFORMS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
+                    {platforms.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
                       </option>
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Choose where the asset lives.
+                    Platforms are admin-managed.
                   </p>
                 </div>
 
                 <div>
+                  <Label>Category</Label>
+                  <select
+                    className="mt-1 h-10 w-full rounded-md border border-border/60 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    value={form.categoryId}
+                    onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
+                    disabled={metaLoading}
+                  >
+                    <option value="">No category</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {meRole === "ADMIN" && c.isAdminOnly ? " (Admin only)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Categories are admin-managed. Streaming Kit is admin-only.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2">
                   <Label>Price (USD) *</Label>
                   <Input
                     placeholder="e.g. 1200"
@@ -213,16 +288,13 @@ export default function CreateListingForm({ initial }) {
                 <Label>Description *</Label>
                 <Textarea
                   placeholder={
-                    "Include:\n• Niche + audience\n• What’s included (email, content, brand deals)\n• Monetization status\n• Reason for selling\n• Any restrictions (copyright strikes, etc.)"
+                    "Include:\n• Niche + audience\n• What’s included\n• Monetization status\n• Reason for selling\n• Any restrictions (strikes, copyrights)"
                   }
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   rows={9}
                   required
                 />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  The more transparent you are, the faster you sell.
-                </p>
               </div>
             </section>
 
@@ -234,7 +306,7 @@ export default function CreateListingForm({ initial }) {
                 <div className="text-sm font-semibold">Metrics (shown on listing details)</div>
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <Info className="h-4 w-4" />
-                  These are buyer-facing.
+                  Buyer-facing
                 </span>
               </div>
 
@@ -290,9 +362,7 @@ export default function CreateListingForm({ initial }) {
                 <div className="space-y-2">
                   <Label>Monetized?</Label>
                   <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-                    <span className="text-sm text-muted-foreground">
-                      Toggle if monetization is enabled
-                    </span>
+                    <span className="text-sm text-muted-foreground">Toggle if enabled</span>
                     <Switch
                       checked={Boolean(form.metrics.monetized)}
                       onCheckedChange={(v) =>
@@ -319,10 +389,7 @@ export default function CreateListingForm({ initial }) {
                     placeholder='e.g. "US", "UK", "Nigeria"'
                     value={form.metrics.countryTop ?? ""}
                     onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        metrics: { ...f.metrics, countryTop: e.target.value },
-                      }))
+                      setForm((f) => ({ ...f, metrics: { ...f.metrics, countryTop: e.target.value } }))
                     }
                   />
                 </div>
@@ -343,9 +410,6 @@ export default function CreateListingForm({ initial }) {
                   <option value="ACTIVE">Active (visible)</option>
                   <option value="INACTIVE">Inactive (hidden)</option>
                 </select>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Inactive listings won’t show in the marketplace.
-                </p>
               </div>
 
               <div className="flex items-end">
@@ -376,7 +440,7 @@ export default function CreateListingForm({ initial }) {
             <div>
               <div className="text-sm font-semibold">Cover image *</div>
               <p className="text-xs text-muted-foreground">
-                Use a clear screenshot of the profile/channel analytics or branding.
+                Use a clear screenshot of analytics or branding.
               </p>
             </div>
 
@@ -384,12 +448,6 @@ export default function CreateListingForm({ initial }) {
               value={form.image}
               onChange={(url) => setForm((f) => ({ ...f, image: url }))}
             />
-
-            {!form.image ? (
-              <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-xs text-muted-foreground">
-                Tip: Uploading an analytics screenshot builds trust and increases conversion.
-              </div>
-            ) : null}
           </div>
         </form>
       </CardContent>

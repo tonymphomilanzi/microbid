@@ -28,4 +28,7 @@ export const listingsService = {
   // Auth required (Stripe checkout intent via allowed endpoint list)
   checkout: (listingId) =>
     api.post("/listings", { intent: "checkout", listingId }).then((r) => r.data),
+
+  getPlatforms: () => api.get("/platforms").then(r => r.data),
+  getCategories: () => api.get("/categories").then(r => r.data),
 };

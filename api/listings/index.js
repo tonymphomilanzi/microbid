@@ -4,12 +4,10 @@ import { getStripe } from "../_lib/stripe.js";
 
 function readJson(req) {
   const b = req.body;
-
   if (!b) return {};
-  if (typeof b === "object") return b; // Vercel often parses JSON automatically
+  if (typeof b === "object") return b;
   if (Buffer.isBuffer(b)) return JSON.parse(b.toString("utf8"));
   if (typeof b === "string") return JSON.parse(b);
-
   return {};
 }
 
@@ -19,11 +17,12 @@ export default async function handler(req, res) {
     // GET /api/listings (public)
     // -------------------------
     if (req.method === "GET") {
-      const { platform, q, minPrice, maxPrice } = req.query;
+      const { platform, categoryId, q, minPrice, maxPrice } = req.query;
 
       const where = {
         status: "ACTIVE",
         ...(platform ? { platform } : {}),
+        ...(categoryId ? { categoryId } : {}),
         ...(q
           ? {
               OR: [
@@ -45,7 +44,10 @@ export default async function handler(req, res) {
       const listings = await prisma.listing.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        include: { seller: { select: { id: true, email: true, isVerified: true, tier: true } } },
+        include: {
+          seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+          category: true,
+        },
       });
 
       return res.status(200).json({ listings });
@@ -64,9 +66,7 @@ export default async function handler(req, res) {
       if (body.intent === "checkout") {
         const listingId = body.listingId;
 
-        if (!listingId) {
-          return res.status(400).json({ message: "Missing listingId" });
-        }
+        if (!listingId) return res.status(400).json({ message: "Missing listingId" });
 
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
@@ -103,7 +103,6 @@ export default async function handler(req, res) {
           },
         });
 
-        // Note: normally you confirm payment via Stripe webhook.
         await prisma.purchase.create({
           data: {
             listingId: listing.id,
@@ -117,41 +116,83 @@ export default async function handler(req, res) {
         return res.status(200).json({ checkoutUrl: session.url });
       }
 
-      // Create / Update (Upsert) listing
-      const { id, title, platform, price, description, image, metrics, status } = body;
+      // Create / Update listing
+      const {
+        id,
+        title,
+        platform,
+        categoryId,
+        price,
+        description,
+        image,
+        metrics,
+        status,
+      } = body;
 
       const numericPrice = Number(price);
 
-      if (!title || !platform || !description || !image || !Number.isFinite(numericPrice) || numericPrice <= 0) {
+      if (
+        !title ||
+        !platform ||
+        !description ||
+        !image ||
+        !Number.isFinite(numericPrice) ||
+        numericPrice <= 0
+      ) {
         return res.status(400).json({ message: "Missing/invalid required fields" });
       }
 
-      // Ensure user exists
-      await prisma.user.upsert({
+      // Ensure user exists + get role for admin-only category checks
+      const dbUser = await prisma.user.upsert({
         where: { id: decoded.uid },
         update: { email: decoded.email ?? "unknown" },
         create: { id: decoded.uid, email: decoded.email ?? "unknown" },
       });
 
+      // Validate platform is active (admin-managed platforms list)
+      const platformRow = await prisma.platform.findFirst({
+        where: { name: platform, isActive: true },
+      });
+
+      if (!platformRow) {
+        return res.status(400).json({ message: "Invalid or inactive platform" });
+      }
+
+      // Validate category if provided + enforce admin-only
+      let categoryToSet = null;
+
+      if (categoryId) {
+        const cat = await prisma.category.findUnique({ where: { id: categoryId } });
+        if (!cat || !cat.isActive) {
+          return res.status(400).json({ message: "Invalid category" });
+        }
+        if (cat.isAdminOnly && dbUser.role !== "ADMIN") {
+          return res.status(403).json({ message: "This category is admin-only" });
+        }
+        categoryToSet = cat.id;
+      }
+
       // Update
       if (id) {
         const existing = await prisma.listing.findUnique({ where: { id } });
-
         if (!existing) return res.status(404).json({ message: "Listing not found" });
-        if (existing.sellerId !== decoded.uid) {
-          return res.status(403).json({ message: "Forbidden" });
-        }
+        if (existing.sellerId !== decoded.uid) return res.status(403).json({ message: "Forbidden" });
 
         const updated = await prisma.listing.update({
           where: { id },
           data: {
             title,
             platform,
+            categoryId: categoryToSet,
             price: numericPrice,
             description,
             image,
             metrics: metrics ?? undefined,
             status: status ?? undefined,
+          },
+          include: {
+            seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+            category: true,
           },
         });
 
@@ -163,11 +204,16 @@ export default async function handler(req, res) {
         data: {
           title,
           platform,
+          categoryId: categoryToSet,
           price: numericPrice,
           description,
           image,
           metrics: metrics ?? null,
           sellerId: decoded.uid,
+        },
+        include: {
+          seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+          category: true,
         },
       });
 
@@ -179,4 +225,4 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
-}
+}  

@@ -13,7 +13,10 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const listing = await prisma.listing.findUnique({
         where: { id },
-       include: { seller: { select: { id: true, email: true, isVerified: true, tier: true } } },
+      include: {
+  seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+  category: true,
+},
       });
 
       if (!listing) return res.status(404).json({ message: "Not found" });
