@@ -1,5 +1,5 @@
-import { prisma } from "./_lib/prisma.js";
-import { requireAdmin } from "./_lib/adminOnly.js";
+import { prisma } from "../_lib/prisma.js";
+import { requireAdmin } from "../_lib/adminOnly.js";
 
 function readJson(req) {
   const b = req.body;
