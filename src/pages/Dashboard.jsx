@@ -19,11 +19,8 @@ import ChatDialog from "../components/chat/ChatDialog";
 import { chatService } from "../services/chat.service";
 import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
 import { useAuth } from "../context/AuthContext";
-
-
-import { useAuth } from "../context/AuthContext";
 import UsernameSetupDialog from "../components/forms/UsernameSetupDialog";
-import { Button } from "../components/ui/button";
+
 
 function StatusBadge({ status }) {
   const map = {
@@ -43,9 +40,8 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-  const { isAdmin } = useAuth();
+  const { isAdmin,refreshMe } = useAuth();
   //username states
-  const { refreshMe } = useAuth();
   const [usernameDialogOpen, setUsernameDialogOpen] = useState(false);
 
 
