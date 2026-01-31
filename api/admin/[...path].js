@@ -1,5 +1,5 @@
-import { prisma } from "../_lib/prisma.js";
-import { requireAdmin } from "../_lib/adminOnly.js";
+import { prisma } from "./_lib/prisma.js";
+import { requireAdmin } from "./_lib/adminOnly.js";
 
 function readJson(req) {
   const b = req.body;
@@ -14,17 +14,20 @@ export default async function handler(req, res) {
   try {
     await requireAdmin(req);
 
-    // ✅ Use URL path parsing (most reliable on Vercel)
     const url = new URL(req.url, "http://localhost");
+    // url.pathname could be:
+    // /api/admin
+    // /api/admin/users
+    // /api/admin/users/<id>
     const parts = url.pathname
-      .replace(/^\/api\/admin\/?/, "") // remove "/api/admin" prefix
+      .replace(/^\/api\/admin\/?/, "")
       .split("/")
       .filter(Boolean);
 
-    const resource = parts[0] || "";
+    const resource = parts[0] || ""; // users | listings | platforms | categories
     const id = parts[1] || null;
 
-    // Optional: nice ping
+    // nice health response
     if (!resource) {
       return res.status(200).json({
         ok: true,
@@ -35,8 +38,7 @@ export default async function handler(req, res) {
     // ---------------- USERS ----------------
     if (resource === "users") {
       if (req.method === "GET") {
-        const q = (url.searchParams.get("q") || "").toString();
-
+        const q = url.searchParams.get("q") || "";
         const users = await prisma.user.findMany({
           where: q
             ? {
@@ -59,19 +61,17 @@ export default async function handler(req, res) {
             _count: { select: { listings: true } },
           },
         });
-
         return res.status(200).json({ users });
       }
 
       if (req.method === "PATCH") {
         if (!id) return res.status(400).json({ message: "Missing user id" });
-
         const body = readJson(req);
         const { role, tier, isVerified } = body;
 
         const data = {};
-        if (role) data.role = role; // USER|ADMIN
-        if (tier) data.tier = tier; // FREE|PRO|VIP
+        if (role) data.role = role;
+        if (tier) data.tier = tier;
         if (typeof isVerified === "boolean") {
           data.isVerified = isVerified;
           data.verifiedAt = isVerified ? new Date() : null;
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         const platform = url.searchParams.get("platform");
         const categoryId = url.searchParams.get("categoryId");
         const status = url.searchParams.get("status");
-        const q = (url.searchParams.get("q") || "").toString();
+        const q = url.searchParams.get("q") || "";
 
         const where = {
           ...(platform ? { platform } : {}),
@@ -139,9 +139,7 @@ export default async function handler(req, res) {
 
         const listing = await prisma.listing.update({
           where: { id },
-          data: {
-            ...(body.status ? { status: body.status } : {}),
-          },
+          data: { ...(body.status ? { status: body.status } : {}) },
         });
 
         return res.status(200).json({ listing });
@@ -179,7 +177,6 @@ export default async function handler(req, res) {
             isActive: Boolean(isActive ?? true),
           },
         });
-
         return res.status(201).json({ platform });
       }
 
@@ -233,7 +230,6 @@ export default async function handler(req, res) {
             isAdminOnly: Boolean(isAdminOnly ?? false),
           },
         });
-
         return res.status(201).json({ category });
       }
 
@@ -265,7 +261,7 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: "Method not allowed" });
     }
 
-    return res.status(404).json({ message: "Unknown admin resource", resource, parts });
+    return res.status(404).json({ message: "Unknown admin resource" });
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
