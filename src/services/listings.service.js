@@ -31,4 +31,10 @@ export const listingsService = {
 
   getPlatforms: () => api.get("/platforms").then(r => r.data),
   getCategories: () => api.get("/categories").then(r => r.data),
+
+  checkUsername: (username) =>
+  api.get("/me", { params: { checkUsername: username } }).then((r) => r.data),
+
+setUsername: (username) =>
+  api.post("/me", { username }).then((r) => r.data),
 };

@@ -28,6 +28,7 @@ enum UserTier {
 model User {
   id        String   @id
   email     String
+  username   String?  @unique
   createdAt DateTime @default(now())
 
   role       UserRole  @default(USER)
@@ -56,6 +57,9 @@ model Listing {
   image       String
   metrics     Json?
   status      ListingStatus @default(ACTIVE)
+
+  //more images
+  images String[] @default([])
 
   categoryId  String?
   category    Category?     @relation(fields: [categoryId], references: [id])

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { Card, CardContent } from "../components/ui/card";
@@ -6,8 +6,20 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthContext";
 import { listingsService } from "../services/listings.service";
-import { MessageCircle, CreditCard } from "lucide-react";
+import { MessageCircle, CreditCard, BadgeCheck } from "lucide-react";
 import ChatDialog from "../components/chat/ChatDialog";
+
+function SellerHandle({ username }) {
+  if (username) {
+    return <span className="truncate text-sm font-medium">@{username}</span>;
+  }
+  // never expose email
+  return (
+    <span className="truncate text-sm font-medium select-none blur-[3px]" title="Seller username not set">
+      @private_seller
+    </span>
+  );
+}
 
 export default function ListingDetails() {
   const { id } = useParams();
@@ -19,6 +31,9 @@ export default function ListingDetails() {
 
   const [chatOpen, setChatOpen] = useState(false);
 
+  // Gallery state
+  const [activeImage, setActiveImage] = useState("");
+
   useEffect(() => {
     let mounted = true;
 
@@ -29,7 +44,17 @@ export default function ListingDetails() {
 
       try {
         const { listing } = await listingsService.getListing(id);
-        if (mounted) setListing(listing);
+        if (!mounted) return;
+        setListing(listing);
+
+        const imgs =
+          Array.isArray(listing?.images) && listing.images.length
+            ? listing.images
+            : listing?.image
+              ? [listing.image]
+              : [];
+
+        setActiveImage(imgs[0] || listing?.image || "");
       } catch (e) {
         const msg = e?.response?.data?.message || e.message || "Failed to load listing";
         if (mounted) setError(msg);
@@ -41,6 +66,18 @@ export default function ListingDetails() {
     if (id) run();
     return () => (mounted = false);
   }, [id]);
+
+  const images = useMemo(() => {
+    if (!listing) return [];
+    const arr =
+      Array.isArray(listing.images) && listing.images.length
+        ? listing.images
+        : listing.image
+          ? [listing.image]
+          : [];
+    // ensure unique
+    return Array.from(new Set(arr)).slice(0, 6);
+  }, [listing]);
 
   async function buy() {
     try {
@@ -86,59 +123,107 @@ export default function ListingDetails() {
 
   const m = listing.metrics || {};
   const isOwner = Boolean(user && listing?.sellerId === user.uid);
+  const verified = Boolean(listing?.seller?.isVerified);
+  const username = listing?.seller?.username || "";
 
   return (
     <PageContainer>
       <div className="py-8 space-y-6">
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-xl border bg-muted">
-            <img
-              src={listing.image}
-              alt={listing.title}
-              className="h-full w-full object-cover"
-            />
+          {/* Left: Gallery */}
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-xl border border-border/60 bg-muted">
+              <img
+                src={activeImage || listing.image}
+                alt={listing.title}
+                className="h-full w-full object-cover"
+              />
+            </div>
+
+            {/* Thumbnails */}
+            {images.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {images.map((src) => {
+                  const selected = src === activeImage;
+                  return (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => setActiveImage(src)}
+                      className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition ${
+                        selected
+                          ? "border-primary/40 ring-2 ring-primary/20"
+                          : "border-border/60 hover:border-primary/20"
+                      }`}
+                      title="View image"
+                    >
+                      <img src={src} alt="Listing thumbnail" className="h-full w-full object-cover" />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
+          {/* Right: Details */}
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-4">
               <h1 className="text-2xl font-semibold tracking-tight">{listing.title}</h1>
-              <Badge variant="outline">{listing.platform}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{listing.platform}</Badge>
+                {listing.category?.name ? <Badge variant="outline">{listing.category.name}</Badge> : null}
+              </div>
             </div>
-            
-
 
             <p className="text-sm text-muted-foreground">{listing.description}</p>
 
             <div className="grid grid-cols-2 gap-3">
-              <Card>
+              <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Price</div>
                   <div className="text-lg font-semibold">${listing.price}</div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Seller</div>
-                  <div className="text-sm font-medium truncate">{listing.seller?.email}</div>
+
+                  <div className="mt-1 flex items-center gap-2 min-w-0">
+                    <SellerHandle username={username} />
+                    {verified ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
+                        <BadgeCheck className="h-4 w-4" />
+                        Verified
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {!username ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Seller has not set a public username yet.
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Card>
+              <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Followers/Subs</div>
                   <div className="text-base font-semibold">{m.followers ?? "—"}</div>
                 </CardContent>
               </Card>
-              <Card>
+
+              <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Avg Views</div>
                   <div className="text-base font-semibold">{m.avgViews ?? "—"}</div>
                 </CardContent>
               </Card>
-              <Card>
+
+              <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Engagement</div>
                   <div className="text-base font-semibold">
@@ -146,7 +231,8 @@ export default function ListingDetails() {
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+
+              <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Monetized</div>
                   <div className="text-base font-semibold">
@@ -173,8 +259,6 @@ export default function ListingDetails() {
                 {isOwner ? "Your listing" : "Message Seller"}
               </Button>
             </div>
-
-      
           </div>
         </div>
 

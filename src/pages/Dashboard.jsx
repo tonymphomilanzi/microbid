@@ -20,6 +20,11 @@ import { chatService } from "../services/chat.service";
 import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
 import { useAuth } from "../context/AuthContext";
 
+
+import { useAuth } from "../context/AuthContext";
+import UsernameSetupDialog from "../components/forms/UsernameSetupDialog";
+import { Button } from "../components/ui/button";
+
 function StatusBadge({ status }) {
   const map = {
     ACTIVE: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -39,6 +44,10 @@ export default function Dashboard() {
   const [error, setError] = useState("");
 
   const { isAdmin } = useAuth();
+  //username states
+  const { refreshMe } = useAuth();
+  const [usernameDialogOpen, setUsernameDialogOpen] = useState(false);
+
 
   // Inbox
   const [convosLoading, setConvosLoading] = useState(true);
@@ -135,6 +144,19 @@ export default function Dashboard() {
             <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
             <p className="text-sm text-muted-foreground">{me?.email}</p>
           </div>
+          {me && !me.username ? (
+  <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
+    <div className="text-sm font-semibold">Set your username</div>
+    <div className="mt-1 text-sm text-muted-foreground">
+      Your email is private. Choose a unique username to show publicly on your listings.
+    </div>
+    <div className="mt-3">
+      <Button asChild>
+        <Link to="/dashboard?tab=settings">Set username</Link>
+      </Button>
+    </div>
+  </div>
+) : null}
 
           <div className="flex gap-2">
             <Button variant="outline" onClick={refresh}>
@@ -496,6 +518,19 @@ export default function Dashboard() {
   confirmText="Delete listing"
   onConfirm={removeListingConfirmed}
 />
+
+
+<UsernameSetupDialog
+  open={usernameDialogOpen}
+  onOpenChange={setUsernameDialogOpen}
+  initialUsername={me?.username || ""}
+  onSaved={async () => {
+    await refreshMe?.();
+    // optional: refresh dashboard data if you also store email/username in listings
+  }}
+/>
+
+
     </PageContainer>
   );
 }

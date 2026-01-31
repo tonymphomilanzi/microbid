@@ -11,6 +11,30 @@ function readJson(req) {
   return {};
 }
 
+function toNumberOrUndefined(v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function cleanImageList(arr) {
+  const list = Array.isArray(arr) ? arr : [];
+  const cleaned = list
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean);
+
+  // remove duplicates while preserving order
+  const seen = new Set();
+  const uniq = [];
+  for (const u of cleaned) {
+    if (!seen.has(u)) {
+      seen.add(u);
+      uniq.push(u);
+    }
+  }
+  return uniq;
+}
+
 export default async function handler(req, res) {
   try {
     // -------------------------
@@ -18,6 +42,9 @@ export default async function handler(req, res) {
     // -------------------------
     if (req.method === "GET") {
       const { platform, categoryId, q, minPrice, maxPrice } = req.query;
+
+      const minP = toNumberOrUndefined(minPrice);
+      const maxP = toNumberOrUndefined(maxPrice);
 
       const where = {
         status: "ACTIVE",
@@ -31,11 +58,11 @@ export default async function handler(req, res) {
               ],
             }
           : {}),
-        ...(minPrice || maxPrice
+        ...(minP !== undefined || maxP !== undefined
           ? {
               price: {
-                ...(minPrice ? { gte: Number(minPrice) } : {}),
-                ...(maxPrice ? { lte: Number(maxPrice) } : {}),
+                ...(minP !== undefined ? { gte: minP } : {}),
+                ...(maxP !== undefined ? { lte: maxP } : {}),
               },
             }
           : {}),
@@ -45,7 +72,9 @@ export default async function handler(req, res) {
         where,
         orderBy: { createdAt: "desc" },
         include: {
-          seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+          seller: {
+            select: { id: true, email: true, username: true, isVerified: true, tier: true },
+          },
           category: true,
         },
       });
@@ -65,7 +94,6 @@ export default async function handler(req, res) {
       // Intent: Stripe checkout (kept within allowed endpoint list)
       if (body.intent === "checkout") {
         const listingId = body.listingId;
-
         if (!listingId) return res.status(400).json({ message: "Missing listingId" });
 
         const listing = await prisma.listing.findUnique({
@@ -103,6 +131,7 @@ export default async function handler(req, res) {
           },
         });
 
+        // Note: normally confirm payment via Stripe webhook.
         await prisma.purchase.create({
           data: {
             listingId: listing.id,
@@ -124,34 +153,30 @@ export default async function handler(req, res) {
         categoryId,
         price,
         description,
-        image,
+        image,    // cover image (optional if images[0] provided)
+        images,   // array (optional)
         metrics,
         status,
       } = body;
 
       const numericPrice = Number(price);
 
-      if (
-        !title ||
-        !platform ||
-        !description ||
-        !image ||
-        !Number.isFinite(numericPrice) ||
-        numericPrice <= 0
-      ) {
+      if (!title || !platform || !description || !Number.isFinite(numericPrice) || numericPrice <= 0) {
         return res.status(400).json({ message: "Missing/invalid required fields" });
       }
 
-      // Ensure user exists + get role for admin-only category checks
+      // Ensure user exists + get role (for admin-only categories)
       const dbUser = await prisma.user.upsert({
         where: { id: decoded.uid },
         update: { email: decoded.email ?? "unknown" },
         create: { id: decoded.uid, email: decoded.email ?? "unknown" },
+        select: { id: true, role: true },
       });
 
       // Validate platform is active (admin-managed platforms list)
       const platformRow = await prisma.platform.findFirst({
         where: { name: platform, isActive: true },
+        select: { id: true },
       });
 
       if (!platformRow) {
@@ -160,16 +185,31 @@ export default async function handler(req, res) {
 
       // Validate category if provided + enforce admin-only
       let categoryToSet = null;
-
       if (categoryId) {
-        const cat = await prisma.category.findUnique({ where: { id: categoryId } });
-        if (!cat || !cat.isActive) {
-          return res.status(400).json({ message: "Invalid category" });
-        }
+        const cat = await prisma.category.findUnique({
+          where: { id: categoryId },
+          select: { id: true, isActive: true, isAdminOnly: true },
+        });
+
+        if (!cat || !cat.isActive) return res.status(400).json({ message: "Invalid category" });
         if (cat.isAdminOnly && dbUser.role !== "ADMIN") {
           return res.status(403).json({ message: "This category is admin-only" });
         }
         categoryToSet = cat.id;
+      }
+
+      // Build final image gallery (max 6)
+      const extraImages = cleanImageList(images);
+      const cover = typeof image === "string" && image.trim() ? image.trim() : extraImages[0];
+
+      if (!cover) {
+        return res.status(400).json({ message: "Missing cover image" });
+      }
+
+      const finalImages = cleanImageList([cover, ...extraImages]).slice(0, 6);
+
+      if (finalImages.length === 0) {
+        return res.status(400).json({ message: "Missing images" });
       }
 
       // Update
@@ -186,12 +226,15 @@ export default async function handler(req, res) {
             categoryId: categoryToSet,
             price: numericPrice,
             description,
-            image,
+            image: finalImages[0],
+            images: finalImages,
             metrics: metrics ?? undefined,
             status: status ?? undefined,
           },
           include: {
-            seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+            seller: {
+              select: { id: true, email: true, username: true, isVerified: true, tier: true },
+            },
             category: true,
           },
         });
@@ -207,12 +250,15 @@ export default async function handler(req, res) {
           categoryId: categoryToSet,
           price: numericPrice,
           description,
-          image,
+          image: finalImages[0],
+          images: finalImages,
           metrics: metrics ?? null,
           sellerId: decoded.uid,
         },
         include: {
-          seller: { select: { id: true, email: true, isVerified: true, tier: true } },
+          seller: {
+            select: { id: true, email: true, username: true, isVerified: true, tier: true },
+          },
           category: true,
         },
       });
@@ -225,4 +271,4 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
-}  
+}

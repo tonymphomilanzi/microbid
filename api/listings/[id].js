@@ -2,8 +2,6 @@ import { prisma } from "../_lib/prisma.js";
 import { requireAuth } from "../_lib/auth.js";
 
 export default async function handler(req, res) {
-
-  
   try {
     const rawId = req.query?.id;
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -13,14 +11,34 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const listing = await prisma.listing.findUnique({
         where: { id },
-      include: {
-  seller: { select: { id: true, email: true, isVerified: true, tier: true } },
-  category: true,
-},
+        include: {
+          seller: {
+            select: {
+              id: true,
+              email: true,
+              username: true,
+              isVerified: true,
+              tier: true,
+            },
+          },
+          category: true,
+        },
       });
 
       if (!listing) return res.status(404).json({ message: "Not found" });
-      return res.status(200).json({ listing });
+
+      // Ensure images always exists in response (backward compatibility)
+      const safeListing = {
+        ...listing,
+        images:
+          Array.isArray(listing.images) && listing.images.length
+            ? listing.images
+            : listing.image
+              ? [listing.image]
+              : [],
+      };
+
+      return res.status(200).json({ listing: safeListing });
     }
 
     if (req.method === "DELETE") {
