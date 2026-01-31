@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -88,6 +88,14 @@ export default function Dashboard() {
     refresh();
   }, []);
 
+
+  useEffect(() => {
+  if (sp.get("tab") === "settings") {
+    setUsernameDialogOpen(true);
+  }
+}, [sp]);
+
+
   const summary = useMemo(() => {
     const listings = me?.listings ?? [];
     const active = listings.filter((l) => l.status === "ACTIVE").length;
@@ -132,6 +140,8 @@ export default function Dashboard() {
     refresh();
   }
 
+  const [sp, setSp] = useSearchParams();
+
   return (
     <PageContainer>
       <div className="py-8 space-y-6">
@@ -171,9 +181,9 @@ export default function Dashboard() {
       Your email is private. Choose a unique username to show publicly on your listings.
     </div>
     <div className="mt-3">
-      <Button asChild>
-        <Link to="/dashboard?tab=settings">Set username</Link>
-      </Button>
+     <Button onClick={() => setSp({ tab: "settings" }, { replace: true })}>
+  Set username
+</Button>
     </div>
   </div>
 ) : null}
@@ -523,11 +533,15 @@ export default function Dashboard() {
 
 <UsernameSetupDialog
   open={usernameDialogOpen}
-  onOpenChange={setUsernameDialogOpen}
+  onOpenChange={(open) => {
+    setUsernameDialogOpen(open);
+    if (!open) setSp({}, { replace: true }); // clears ?tab=settings
+  }}
   initialUsername={me?.username || ""}
   onSaved={async (newUsername) => {
-    await refreshMe?.();          // updates AuthContext
-    setMe((prev) => (prev ? { ...prev, username: newUsername } : prev)); // updates dashboard state immediately
+    await refreshMe?.();
+    setMe((prev) => (prev ? { ...prev, username: newUsername } : prev));
+    setSp({}, { replace: true });
   }}
 />
 
