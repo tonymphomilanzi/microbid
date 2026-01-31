@@ -41,8 +41,18 @@ export default function Dashboard() {
   const [error, setError] = useState("");
 
   const { isAdmin,refreshMe } = useAuth();
+
+  //
+  const [sp, setSp] = useSearchParams();
+  const tab = sp.get("tab") || "";
   //username states
   const [usernameDialogOpen, setUsernameDialogOpen] = useState(false);
+
+  useEffect(() => {
+  if (tab === "settings") {
+    setUsernameDialogOpen(true);
+  }
+}, [tab]);
 
 
   // Inbox
@@ -89,11 +99,6 @@ export default function Dashboard() {
   }, []);
 
 
-  useEffect(() => {
-  if (sp.get("tab") === "settings") {
-    setUsernameDialogOpen(true);
-  }
-}, [sp]);
 
 
   const summary = useMemo(() => {
@@ -140,7 +145,7 @@ export default function Dashboard() {
     refresh();
   }
 
-  const [sp, setSp] = useSearchParams();
+ 
 
   return (
     <PageContainer>
