@@ -17,7 +17,7 @@ const { user, logout, openAuthModal, isAdmin } = useAuth();
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
         
-          <span>Microbid</span>
+          <span>Mikrobid</span>
         </Link>
 
         <nav className="flex items-center gap-1">

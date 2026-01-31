@@ -11,7 +11,7 @@ export default function Footer() {
           <div className="space-y-3">
             <div className="flex items-center gap-2 font-semibold tracking-tight">
               <div className="h-8 w-8 rounded-lg bg-primary" />
-              <span>Microbid</span>
+              <span>Mikrobid</span>
             </div>
             <p className="text-sm text-muted-foreground">
               A marketplace for buying and selling social pages, channels, and digital assets with an escrow-first workflow.
@@ -88,7 +88,7 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 flex flex-col gap-3 border-t border-border/60 pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            © {year} Microbid. All rights reserved.
+            © {year} Mikrobid. All rights reserved.
           </p>
 
           <p className="text-sm text-muted-foreground">
