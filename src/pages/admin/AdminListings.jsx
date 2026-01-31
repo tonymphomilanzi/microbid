@@ -153,20 +153,34 @@ export default function AdminListings() {
       </div>
 
       {/* Toolbar */}
-      <div className="grid gap-3 lg:grid-cols-12">
-        <div className="lg:col-span-5 flex gap-2">
-          <Input
-            placeholder="Search title / seller email..."
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <Button variant="outline" onClick={load}>
-            Search
-          </Button>
-        </div>
+      {/* Toolbar (clean stacked layout) */}
+<div className="space-y-3">
+  {/* Search row */}
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-1 gap-2">
+      <Input
+        placeholder="Search title / seller email..."
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <Button variant="outline" onClick={load} disabled={loading || bulkWorking}>
+        Search
+      </Button>
+    </div>
 
+    <div className="flex gap-2 sm:justify-end">
+      <Button variant="secondary" onClick={load} disabled={loading || bulkWorking}>
+        Refresh
+      </Button>
+    </div>
+  </div>
+
+  {/* Filters + bulk actions row */}
+  <Card className="border-border/60 bg-card/60">
+    <CardContent className="p-4 space-y-3">
+      <div className="grid gap-3 lg:grid-cols-12 lg:items-center">
+        {/* Status filter */}
         <div className="lg:col-span-3">
-          <br></br>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="border-border/60 bg-card/60">
               <SelectValue placeholder="Filter status" />
@@ -180,75 +194,64 @@ export default function AdminListings() {
           </Select>
         </div>
 
-        <div className="lg:col-span-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="border-border/60 bg-muted/20">
-              Selected: {selectedCount}
-            </Badge>
+        {/* Selection controls */}
+        <div className="lg:col-span-5 flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="border-border/60 bg-muted/20">
+            Selected: {selectedCount}
+          </Badge>
 
-            <Button
-              variant="outline"
-              onClick={toggleAll}
-              disabled={loading || listings.length === 0}
-            >
-              {allSelected ? "Unselect all" : "Select all"}
-            </Button>
+          <Button
+            variant="outline"
+            onClick={toggleAll}
+            disabled={loading || listings.length === 0}
+          >
+            {allSelected ? "Unselect all" : "Select all"}
+          </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => setSelectedIds(new Set())}
-              disabled={selectedCount === 0}
-            >
-              Clear
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={selectedCount === 0}
+          >
+            Clear
+          </Button>
 
-          <div className="flex items-center gap-2">
-            <Select value={bulkAction} onValueChange={setBulkAction}>
-              <SelectTrigger className="w-[180px] border-border/60 bg-card/60">
-                <SelectValue placeholder="Bulk action" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACTIVE">Set ACTIVE</SelectItem>
-                <SelectItem value="INACTIVE">Set INACTIVE</SelectItem>
-                <SelectItem value="SOLD">Set SOLD</SelectItem>
-                <SelectItem value="DELETE">Delete</SelectItem>
-              </SelectContent>
-            </Select>
+          <Button variant="outline" onClick={load} disabled={loading || bulkWorking}>
+            Apply filters
+          </Button>
+        </div>
 
-            <Button
-              onClick={() => {
-                if (!bulkAction || selectedCount === 0) return;
+        {/* Bulk actions */}
+        <div className="lg:col-span-4 flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+          <Select value={bulkAction} onValueChange={setBulkAction}>
+            <SelectTrigger className="w-[180px] border-border/60 bg-card/60">
+              <SelectValue placeholder="Bulk action" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ACTIVE">Set ACTIVE</SelectItem>
+              <SelectItem value="INACTIVE">Set INACTIVE</SelectItem>
+              <SelectItem value="SOLD">Set SOLD</SelectItem>
+              <SelectItem value="DELETE">Delete</SelectItem>
+            </SelectContent>
+          </Select>
 
-                if (bulkAction === "DELETE") setBulkDeleteOpen(true);
-                else applyBulkStatus(bulkAction);
-              }}
-              disabled={!bulkAction || selectedCount === 0 || bulkWorking}
-            >
-              {bulkWorking ? "Applying..." : "Apply"}
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={load}
-              disabled={bulkWorking}
-            >
-              Refresh
-            </Button>
-          </div>
+          <Button
+            onClick={() => {
+              if (!bulkAction || selectedCount === 0) return;
+              if (bulkAction === "DELETE") setBulkDeleteOpen(true);
+              else applyBulkStatus(bulkAction);
+            }}
+            disabled={!bulkAction || selectedCount === 0 || bulkWorking}
+          >
+            {bulkWorking ? "Applying..." : "Apply"}
+          </Button>
         </div>
       </div>
+    </CardContent>
+  </Card>
+</div>
 
-      {/* Apply status filter button */}
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          onClick={load}
-          disabled={loading}
-        >
-          Apply filters
-        </Button>
-      </div>
+    
 
       {/* List */}
       <Card className="border-border/60 bg-card/60">
