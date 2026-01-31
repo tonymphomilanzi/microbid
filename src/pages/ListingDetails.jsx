@@ -104,6 +104,8 @@ export default function ListingDetails() {
               <h1 className="text-2xl font-semibold tracking-tight">{listing.title}</h1>
               <Badge variant="outline">{listing.platform}</Badge>
             </div>
+            
+
 
             <p className="text-sm text-muted-foreground">{listing.description}</p>
 
