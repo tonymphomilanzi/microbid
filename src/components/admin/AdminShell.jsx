@@ -109,7 +109,7 @@ export default function AdminShell() {
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Vercel-style console layout
+        
               </div>
             </div>
           </div>
