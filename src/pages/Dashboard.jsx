@@ -18,6 +18,7 @@ import {
 import ChatDialog from "../components/chat/ChatDialog";
 import { chatService } from "../services/chat.service";
 import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
+import { useAuth } from "../context/AuthContext";
 
 function StatusBadge({ status }) {
   const map = {
@@ -36,6 +37,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
+
+  const { isAdmin } = useAuth();
 
   // Inbox
   const [convosLoading, setConvosLoading] = useState(true);
@@ -144,6 +147,12 @@ export default function Dashboard() {
                 Create Listing
               </Link>
             </Button>
+             {isAdmin && (
+    <Button asChild variant="outline">
+      <Link to="/admin">Admin Panel</Link>
+    </Button>
+  )}
+
           </div>
         </div>
 

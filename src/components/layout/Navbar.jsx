@@ -7,9 +7,9 @@ import {
   Squares2X2Icon,
   ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
-
+import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 export default function Navbar() {
-  const { user, logout, openAuthModal } = useAuth();
+const { user, logout, openAuthModal, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -59,7 +59,19 @@ export default function Navbar() {
             </NavLink>
           )}
         </nav>
-
+{isAdmin && (
+  <NavLink
+    to="/admin"
+    className={({ isActive }) =>
+      `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+        isActive ? "bg-muted font-medium" : "hover:bg-muted"
+      }`
+    }
+  >
+    <ShieldCheckIcon className="h-5 w-5" />
+    <span className="hidden sm:inline">Admin</span>
+  </NavLink>
+)}
         <div className="flex items-center gap-2">
           {user ? (
             <Button
