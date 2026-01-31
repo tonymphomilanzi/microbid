@@ -138,22 +138,11 @@ export default function Dashboard() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
-            <p className="text-sm text-muted-foreground">{me?.email}</p>
+           <p className="text-sm text-muted-foreground">
+  {me?.username ? `@${me.username}` : "Username not set"}
+</p>
           </div>
-          {me && !me.username ? (
-  <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
-    <div className="text-sm font-semibold">Set your username</div>
-    <div className="mt-1 text-sm text-muted-foreground">
-      Your email is private. Choose a unique username to show publicly on your listings.
-    </div>
-    <div className="mt-3">
-      <Button asChild>
-        <Link to="/dashboard?tab=settings">Set username</Link>
-      </Button>
-    </div>
-  </div>
-) : null}
-
+         
           <div className="flex gap-2">
             <Button variant="outline" onClick={refresh}>
               Refresh
@@ -173,6 +162,22 @@ export default function Dashboard() {
 
           </div>
         </div>
+
+
+         {me && !me.username ? (
+  <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
+    <div className="text-sm font-semibold">Set your username</div>
+    <div className="mt-1 text-sm text-muted-foreground">
+      Your email is private. Choose a unique username to show publicly on your listings.
+    </div>
+    <div className="mt-3">
+      <Button asChild>
+        <Link to="/dashboard?tab=settings">Set username</Link>
+      </Button>
+    </div>
+  </div>
+) : null}
+
 
         {error ? (
           <Card className="border-border/60 bg-card/60">
@@ -520,9 +525,9 @@ export default function Dashboard() {
   open={usernameDialogOpen}
   onOpenChange={setUsernameDialogOpen}
   initialUsername={me?.username || ""}
-  onSaved={async () => {
-    await refreshMe?.();
-    // optional: refresh dashboard data if you also store email/username in listings
+  onSaved={async (newUsername) => {
+    await refreshMe?.();          // updates AuthContext
+    setMe((prev) => (prev ? { ...prev, username: newUsername } : prev)); // updates dashboard state immediately
   }}
 />
 

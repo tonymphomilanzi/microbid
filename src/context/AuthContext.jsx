@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useCallback, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { listingsService } from "../services/listings.service";
@@ -11,11 +11,11 @@ export function AuthProvider({ children }) {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
-  // NEW: DB user (from /api/me)
+  // DB user from /api/me
   const [me, setMe] = useState(null);
   const [meLoading, setMeLoading] = useState(false);
 
-  async function refreshMe() {
+  const refreshMe = useCallback(async () => {
     if (!auth.currentUser) {
       setMe(null);
       return;
@@ -26,12 +26,11 @@ export function AuthProvider({ children }) {
       const { user: dbUser } = await listingsService.me();
       setMe(dbUser);
     } catch {
-      // If token expired or backend fails, don't block UI
       setMe(null);
     } finally {
       setMeLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -46,30 +45,37 @@ export function AuthProvider({ children }) {
     });
 
     return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshMe]);
 
   const isAdmin = me?.role === "ADMIN";
+  const username = me?.username || null;
+
+  const logout = useCallback(async () => {
+    // close modal + clear state immediately for snappy UI
+    setAuthModalOpen(false);
+    setMe(null);
+    await signOut(auth);
+  }, []);
 
   const value = useMemo(
     () => ({
       user,
       authLoading,
+
       authModalOpen,
       openAuthModal: () => setAuthModalOpen(true),
       closeAuthModal: () => setAuthModalOpen(false),
-      logout: async () => {
-        await signOut(auth);
-        setMe(null);
-      },
 
-      // NEW exports
       me,
       meLoading,
       refreshMe,
+
       isAdmin,
+      username,
+
+      logout,
     }),
-    [user, authLoading, authModalOpen, me, meLoading, isAdmin]
+    [user, authLoading, authModalOpen, me, meLoading, refreshMe, isAdmin, username, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
