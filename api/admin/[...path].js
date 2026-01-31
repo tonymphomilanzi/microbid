@@ -18,10 +18,12 @@ export default async function handler(req, res) {
   try {
     await requireAdmin(req);
 
-    const path = req.query?.path || []; // catch-all segments
-    const resource = path[0];           // "users" | "listings" | "platforms" | "categories"
-    const id = path[1] || null;
+   const raw = req.query?.path;
+   const path = Array.isArray(raw) ? raw : raw ? [raw] : [];
+   const resource = path[0] || "";
+   const id = path[1] || null;
 
+   
     // ---------------- USERS ----------------
     if (resource === "users") {
       if (req.method === "GET") {
