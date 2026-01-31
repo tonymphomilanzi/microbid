@@ -166,6 +166,7 @@ export default function AdminListings() {
         </div>
 
         <div className="lg:col-span-3">
+          <br></br>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="border-border/60 bg-card/60">
               <SelectValue placeholder="Filter status" />
