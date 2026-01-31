@@ -206,7 +206,7 @@ export default function Home() {
                   />
                   <Step
                     title="3) Act"
-                    desc="Login to message sellers or buy via Stripe checkout."
+                    desc="Login to message sellers or buy via Stripe,Paypal,MOMO,Crypto."
                   />
                 </div>
               </div>
