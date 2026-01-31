@@ -8,7 +8,13 @@ import Dashboard from "./pages/Dashboard";
 import CreateListing from "./pages/CreateListing";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import AuthModal from "./components/auth/AuthModal";
-
+import AdminRoute from "./components/auth/AdminRoute";
+import AdminShell from "./components/admin/AdminShell";
+import AdminHome from "./pages/admin/AdminHome";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminListings from "./pages/admin/AdminListings";
+import AdminPlatforms from "./pages/admin/AdminPlatforms";
+import AdminCategories from "./pages/admin/AdminCategories";
 export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -36,6 +42,23 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+
+        <Route
+  path="/admin"
+  element={
+    <AdminRoute>
+      <AdminShell />
+    </AdminRoute>
+  }
+>
+  <Route index element={<AdminHome />} />
+  <Route path="users" element={<AdminUsers />} />
+  <Route path="listings" element={<AdminListings />} />
+  <Route path="platforms" element={<AdminPlatforms />} />
+  <Route path="categories" element={<AdminCategories />} />
+</Route>
+
       </Routes>
 
       <Footer />
