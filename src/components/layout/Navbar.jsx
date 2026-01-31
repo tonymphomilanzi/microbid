@@ -58,8 +58,8 @@ const { user, logout, openAuthModal, isAdmin } = useAuth();
               <span className="hidden sm:inline">Dashboard</span>
             </NavLink>
           )}
-        </nav>
-{isAdmin && (
+
+          {isAdmin && (
   <NavLink
     to="/admin"
     className={({ isActive }) =>
@@ -72,7 +72,9 @@ const { user, logout, openAuthModal, isAdmin } = useAuth();
     <span className="hidden sm:inline">Admin</span>
   </NavLink>
 )}
-        <div className="flex items-center gap-2">
+   
+        </nav>
+     <div className="flex items-center gap-2">
           {user ? (
             <Button
               variant="outline"
