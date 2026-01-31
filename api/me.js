@@ -43,9 +43,7 @@ function buildSuggestions(base) {
 
 export default async function handler(req, res) {
   try {
-    const decoded = await requireAuth(req);
-
-    // Username availability check (no new endpoint)
+    // ✅ PUBLIC username availability check (no auth required)
     const check = req.query?.checkUsername;
     if (req.method === "GET" && check) {
       const normalized = normalizeUsername(check);
@@ -59,11 +57,22 @@ export default async function handler(req, res) {
         });
       }
 
-      const available = await usernameAvailable(normalized, decoded.uid);
+      // Optional: if user is logged in, allow their current username
+      let currentUid = null;
+      try {
+        const header = req.headers.authorization || "";
+        if (header.startsWith("Bearer ")) {
+          const decoded = await requireAuth(req); // will succeed only if token valid
+          currentUid = decoded.uid;
+        }
+      } catch {
+        currentUid = null;
+      }
+
+      const available = await usernameAvailable(normalized, currentUid);
 
       let suggestions = [];
       if (!available) {
-        // try 3 suggestions that are available
         const candidates = buildSuggestions(normalized);
         const filtered = [];
         for (const c of candidates) {
@@ -74,6 +83,9 @@ export default async function handler(req, res) {
 
       return res.status(200).json({ available, normalized, suggestions });
     }
+
+    // ✅ Everything else requires auth
+    const decoded = await requireAuth(req);
 
     if (req.method === "GET") {
       const user = await prisma.user.upsert({
@@ -115,8 +127,19 @@ export default async function handler(req, res) {
       const updated = await prisma.user.upsert({
         where: { id: decoded.uid },
         update: { username: normalized, email: decoded.email ?? "unknown" },
-        create: { id: decoded.uid, email: decoded.email ?? "unknown", username: normalized },
-        select: { id: true, email: true, username: true, role: true, tier: true, isVerified: true },
+        create: {
+          id: decoded.uid,
+          email: decoded.email ?? "unknown",
+          username: normalized,
+        },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          role: true,
+          tier: true,
+          isVerified: true,
+        },
       });
 
       return res.status(200).json({ user: updated });

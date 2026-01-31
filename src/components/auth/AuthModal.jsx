@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Input } from "../ui/input";
@@ -23,6 +24,7 @@ function normalizeUsername(input) {
 }
 
 export default function AuthModal() {
+  const navigate = useNavigate();
   const { authModalOpen, closeAuthModal, refreshMe } = useAuth();
 
   const [tab, setTab] = useState("login");
@@ -37,15 +39,16 @@ export default function AuthModal() {
   const [checking, setChecking] = useState(false);
   const [available, setAvailable] = useState(null); // null | true | false
   const [suggestions, setSuggestions] = useState([]);
-  const [usernameMsg, setUsernameMsg] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  // Check username availability (debounced)
+  const [busy, setBusy] = useState(false);
+
+  // Debounced username check (PUBLIC endpoint after you fix api/me.js)
   useEffect(() => {
     let t;
 
     async function run() {
-      setUsernameMsg("");
+      setMsg("");
       setSuggestions([]);
       setAvailable(null);
 
@@ -56,112 +59,111 @@ export default function AuthModal() {
       try {
         const res = await listingsService.checkUsername(normalizedUsername);
         setAvailable(Boolean(res.available));
-        setUsernameMsg(
-          res.available
-            ? "Username is available"
-            : res.reason || "Username is taken"
-        );
+        setMsg(res.available ? "Username is available" : res.reason || "Username is taken");
         setSuggestions(res.suggestions || []);
       } catch (e) {
         setAvailable(null);
-        setUsernameMsg(e?.response?.data?.message || e.message || "Failed to check username");
+        setMsg(e?.response?.data?.message || e.message || "Failed to check username");
       } finally {
         setChecking(false);
       }
     }
 
-    // debounce
     t = setTimeout(run, 450);
     return () => clearTimeout(t);
   }, [normalizedUsername, tab]);
 
+  async function afterAuthRedirectIfNoUsername() {
+    // ensure DB user exists/loaded
+    const meRes = await listingsService.me();
+    if (!meRes?.user?.username) {
+      closeAuthModal();
+      navigate("/dashboard?tab=settings");
+      return true;
+    }
+    return false;
+  }
+
   async function login() {
-    setAuthLoading(true);
+    setBusy(true);
+    setMsg("");
     try {
       await signInWithEmailAndPassword(auth, email, password);
       await refreshMe?.();
-      closeAuthModal();
+
+      const redirected = await afterAuthRedirectIfNoUsername();
+      if (!redirected) closeAuthModal();
+    } catch (e) {
+      setMsg(e?.message || "Login failed");
     } finally {
-      setAuthLoading(false);
+      setBusy(false);
     }
   }
 
   async function signup() {
+    setBusy(true);
+    setMsg("");
+
     if (!normalizedUsername) {
-      setUsernameMsg("Please choose a username.");
+      setBusy(false);
+      setMsg("Please choose a username.");
       return;
     }
     if (available !== true) {
-      setUsernameMsg("Please choose an available username.");
+      setBusy(false);
+      setMsg("Please choose an available username.");
       return;
     }
 
-    setAuthLoading(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
 
-      // set username in DB (email stays private)
+      // Save username after Firebase account creation
       await listingsService.setUsername(normalizedUsername);
 
       await refreshMe?.();
       closeAuthModal();
     } catch (e) {
-      setUsernameMsg(e?.response?.data?.message || e.message || "Sign up failed");
+      const code = e?.code || "";
+      if (code === "auth/email-already-in-use") {
+        setTab("login");
+        setMsg("This email already has an account. Please login instead.");
+      } else {
+        setMsg(e?.message || "Sign up failed");
+      }
     } finally {
-      setAuthLoading(false);
+      setBusy(false);
     }
   }
 
   const googleProvider = new GoogleAuthProvider();
 
   async function loginWithGoogle() {
-    setAuthLoading(true);
+    setBusy(true);
+    setMsg("");
     try {
       await signInWithPopup(auth, googleProvider);
       await refreshMe?.();
 
-      // If user has no username yet, keep modal open and switch to signup tab to set it.
-      const me = await listingsService.me();
-      if (!me?.user?.username) {
-        setTab("signup");
-        setUsernameMsg("Please choose a username to continue.");
-        return;
-      }
-
-      closeAuthModal();
+      const redirected = await afterAuthRedirectIfNoUsername();
+      if (!redirected) closeAuthModal();
     } catch (err) {
-      // fallback for popup-blocked browsers
       if (String(err?.code).includes("popup")) {
         await signInWithRedirect(auth, googleProvider);
         return;
       }
       console.error(err);
-      alert(err?.message ?? "Google sign-in failed");
+      setMsg(err?.message ?? "Google sign-in failed");
     } finally {
-      setAuthLoading(false);
+      setBusy(false);
     }
   }
 
-  const usernameStatusBadge = useMemo(() => {
-    if (tab !== "signup") return null;
-    if (!normalizedUsername) return null;
-
-    if (checking) {
-      return (
-        <Badge variant="outline" className="border-border/60 bg-muted/20">
-          Checking…
-        </Badge>
-      );
-    }
-
-    if (available === true) {
-      return <Badge className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">Available</Badge>;
-    }
-
-    if (available === false) {
-      return <Badge className="bg-destructive/15 text-destructive border border-destructive/20">Taken</Badge>;
-    }
-
+  const usernameBadge = useMemo(() => {
+    if (tab !== "signup" || !normalizedUsername) return null;
+    if (checking) return <Badge variant="outline">Checking…</Badge>;
+    if (available === true) return <Badge className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">Available</Badge>;
+    if (available === false) return <Badge className="bg-destructive/15 text-destructive border border-destructive/20">Taken</Badge>;
     return null;
   }, [tab, normalizedUsername, checking, available]);
 
@@ -169,11 +171,10 @@ export default function AuthModal() {
     <Dialog open={authModalOpen} onOpenChange={(o) => !o && closeAuthModal()}>
       <DialogContent className="border-border/60 bg-card text-card-foreground">
         <DialogHeader>
-          <DialogTitle>{tab === "signup" ? "Create your account" : "Login to continue"}</DialogTitle>
+          <DialogTitle>Continue</DialogTitle>
         </DialogHeader>
 
-        {/* Google button */}
-        <Button variant="outline" className="w-full gap-2" onClick={loginWithGoogle} disabled={authLoading}>
+        <Button variant="outline" className="w-full gap-2" onClick={loginWithGoogle} disabled={busy}>
           <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C34.9 6.1 29.7 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.1-.1-2.3-.4-3.5z"/>
             <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.7 1.1 7.8 2.9l5.7-5.7C34.9 6.1 29.7 4 24 4c-7.7 0-14.4 4.3-17.7 10.7z"/>
@@ -192,35 +193,30 @@ export default function AuthModal() {
           </div>
         </div>
 
-        <Tabs value={tab} onValueChange={setTab} defaultValue="login">
+        {msg ? (
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+            {msg}
+          </div>
+        ) : null}
+
+        <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign up</TabsTrigger>
           </TabsList>
 
           <div className="mt-4 space-y-3">
-            {/* Username only on signup */}
             {tab === "signup" ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
                   <Input
                     placeholder="Username (public) e.g. microbid_seller"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                   />
-                  {usernameStatusBadge}
+                  {usernameBadge}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Only letters, numbers, underscore. 3–20 chars.
-                </div>
-
-                {usernameMsg ? (
-                  <div className={`text-xs ${available ? "text-emerald-300" : "text-muted-foreground"}`}>
-                    {usernameMsg}
-                  </div>
-                ) : null}
-
-                {suggestions.length ? (
+                {suggestions?.length ? (
                   <div className="flex flex-wrap gap-2">
                     {suggestions.map((s) => (
                       <Button
@@ -236,6 +232,9 @@ export default function AuthModal() {
                     ))}
                   </div>
                 ) : null}
+                <p className="text-xs text-muted-foreground">
+                  Your email stays private. Username is shown publicly.
+                </p>
               </div>
             ) : null}
 
@@ -249,23 +248,15 @@ export default function AuthModal() {
           </div>
 
           <TabsContent value="login" className="mt-4">
-            <Button className="w-full" onClick={login} disabled={authLoading}>
-              {authLoading ? "Logging in..." : "Login"}
+            <Button className="w-full" onClick={login} disabled={busy}>
+              {busy ? "Logging in..." : "Login"}
             </Button>
           </TabsContent>
 
           <TabsContent value="signup" className="mt-4">
-            <Button
-              className="w-full"
-              onClick={signup}
-              disabled={authLoading || checking || available !== true}
-            >
-              {authLoading ? "Creating..." : "Create account"}
+            <Button className="w-full" onClick={signup} disabled={busy || checking || available !== true}>
+              {busy ? "Creating..." : "Create account"}
             </Button>
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              Your email stays private. Your username is shown publicly on listings.
-            </p>
           </TabsContent>
         </Tabs>
       </DialogContent>
