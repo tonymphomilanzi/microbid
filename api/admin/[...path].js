@@ -10,24 +10,32 @@ function readJson(req) {
   return {};
 }
 
-function asString(v) {
-  return Array.isArray(v) ? v[0] : v;
-}
-
 export default async function handler(req, res) {
   try {
     await requireAdmin(req);
 
-   const raw = req.query?.path;
-   const path = Array.isArray(raw) ? raw : raw ? [raw] : [];
-   const resource = path[0] || "";
-   const id = path[1] || null;
+    // ✅ Use URL path parsing (most reliable on Vercel)
+    const url = new URL(req.url, "http://localhost");
+    const parts = url.pathname
+      .replace(/^\/api\/admin\/?/, "") // remove "/api/admin" prefix
+      .split("/")
+      .filter(Boolean);
 
-   
+    const resource = parts[0] || "";
+    const id = parts[1] || null;
+
+    // Optional: nice ping
+    if (!resource) {
+      return res.status(200).json({
+        ok: true,
+        resources: ["users", "listings", "platforms", "categories"],
+      });
+    }
+
     // ---------------- USERS ----------------
     if (resource === "users") {
       if (req.method === "GET") {
-        const q = (asString(req.query?.q) || "").toString();
+        const q = (url.searchParams.get("q") || "").toString();
 
         const users = await prisma.user.findMany({
           where: q
@@ -72,7 +80,14 @@ export default async function handler(req, res) {
         const user = await prisma.user.update({
           where: { id },
           data,
-          select: { id: true, email: true, role: true, tier: true, isVerified: true, verifiedAt: true },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            tier: true,
+            isVerified: true,
+            verifiedAt: true,
+          },
         });
 
         return res.status(200).json({ user });
@@ -85,10 +100,10 @@ export default async function handler(req, res) {
     // ---------------- LISTINGS ----------------
     if (resource === "listings") {
       if (req.method === "GET") {
-        const platform = asString(req.query?.platform);
-        const categoryId = asString(req.query?.categoryId);
-        const status = asString(req.query?.status);
-        const q = (asString(req.query?.q) || "").toString();
+        const platform = url.searchParams.get("platform");
+        const categoryId = url.searchParams.get("categoryId");
+        const status = url.searchParams.get("status");
+        const q = (url.searchParams.get("q") || "").toString();
 
         const where = {
           ...(platform ? { platform } : {}),
@@ -122,14 +137,14 @@ export default async function handler(req, res) {
         if (!id) return res.status(400).json({ message: "Missing listing id" });
         const body = readJson(req);
 
-        const updated = await prisma.listing.update({
+        const listing = await prisma.listing.update({
           where: { id },
           data: {
             ...(body.status ? { status: body.status } : {}),
           },
         });
 
-        return res.status(200).json({ listing: updated });
+        return res.status(200).json({ listing });
       }
 
       if (req.method === "DELETE") {
@@ -250,7 +265,7 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: "Method not allowed" });
     }
 
-    return res.status(404).json({ message: "Unknown admin resource" });
+    return res.status(404).json({ message: "Unknown admin resource", resource, parts });
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
