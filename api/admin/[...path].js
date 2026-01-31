@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       .filter(Boolean);
 
     const resource = parts[0] || ""; // users | listings | platforms | categories
-    const id = parts[1] || null;
+    const id = parts[1] || url.searchParams.get("id") || null;
 
     // nice health response
     if (!resource) {
