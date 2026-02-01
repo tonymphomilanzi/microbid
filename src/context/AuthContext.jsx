@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useCallback, useState } 
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { listingsService } from "../services/listings.service";
-
+import { chatService } from "../services/chat.service";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -10,6 +10,9 @@ export function AuthProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(true);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  //chat staate
+  const [unreadChats, setUnreadChats] = useState(0);
 
   // DB user from /api/me
   const [me, setMe] = useState(null);

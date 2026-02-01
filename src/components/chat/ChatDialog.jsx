@@ -30,7 +30,8 @@ export default function ChatDialog({
   const otherParty = useMemo(() => {
     if (!conversation || !currentUser) return "";
     const isBuyer = conversation.buyerId === currentUser.uid;
-    return isBuyer ? conversation.seller?.email : conversation.buyer?.email;
+    const other = isBuyer ? conversation.seller : conversation.buyer;
+    return other?.username ? `@${other.username}` : "@private_user";
   }, [conversation, currentUser]);
 
   function scrollToBottom() {
@@ -115,7 +116,12 @@ export default function ChatDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-3">
             <span className="truncate">
-              {otherParty ? `Chat • ${otherParty}` : "Chat"}
+       Inbox •{" "}
+  {otherParty === "@private_user" ? (
+    <span className="select-none blur-[3px]">@private_user</span>
+  ) : (
+    otherParty
+  )}
             </span>
             {refreshing ? (
               <span className="text-xs text-muted-foreground">syncing…</span>

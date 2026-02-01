@@ -7,10 +7,15 @@ import {
   Squares2X2Icon,
   ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
-import { ShieldCheckIcon } from "@heroicons/react/24/outline";
+import { ShieldCheckIcon,BellIcon, UserCircleIcon } from "@heroicons/react/24/outline";
+
+
+
+
+
 export default function Navbar() {
-const { user, logout, openAuthModal, isAdmin } = useAuth();
-  const navigate = useNavigate();
+const { user, openAuthModal, unreadChats, isAdmin } = useAuth();
+const navigate = useNavigate();
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
@@ -45,55 +50,52 @@ const { user, logout, openAuthModal, isAdmin } = useAuth();
             <span className="hidden sm:inline">Marketplace</span>
           </NavLink>
 
-          {user && (
-            <NavLink
-              to="/dashboard"
-              className={({ isActive }) =>
-                `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                  isActive ? "bg-muted font-medium" : "hover:bg-muted"
-                }`
-              }
-            >
-              <Squares2X2Icon className="h-5 w-5" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </NavLink>
-          )}
+        
 
-          {isAdmin && (
-  <NavLink
-    to="/admin"
-    className={({ isActive }) =>
-      `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-        isActive ? "bg-muted font-medium" : "hover:bg-muted"
-      }`
-    }
-  >
-    <ShieldCheckIcon className="h-5 w-5" />
-    <span className="hidden sm:inline">Admin</span>
-  </NavLink>
-)}
    
         </nav>
-     <div className="flex items-center gap-2">
-          {user ? (
-            <Button
-              variant="outline"
-              onClick={async () => {
-                await logout();
-                navigate("/marketplace");
-              }}
-              className="gap-2"
-            >
-              <ArrowRightOnRectangleIcon className="h-5 w-5" />
-              Logout
-            </Button>
-          ) : (
-            <Button onClick={openAuthModal} className="gap-2">
-              <ArrowRightOnRectangleIcon className="h-5 w-5" />
-              Login
-            </Button>
-          )}
-        </div>
+   <div className="flex items-center gap-2">
+  {user ? (
+    <>
+      {/* Bell */}
+      <button
+        onClick={() => navigate("/dashboard?tab=inbox")}
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+        aria-label="Chat notifications"
+        title="Inbox"
+      >
+        <BellIcon className="h-6 w-6" />
+        {unreadChats > 0 ? (
+          <span className="absolute -right-1 -top-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground">
+            {unreadChats > 99 ? "99+" : unreadChats}
+          </span>
+        ) : null}
+      </button>
+
+      {/* Optional quick account button */}
+      <button
+        onClick={() => navigate("/dashboard")}
+        className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+        aria-label="Account"
+        title="Dashboard"
+      >
+        <UserCircleIcon className="h-6 w-6" />
+      </button>
+
+      {/* Admin shortcut */}
+      {isAdmin ? (
+        <button
+          onClick={() => navigate("/admin")}
+          className="hidden sm:inline-flex items-center rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted"
+        >
+          Admin
+        </button>
+      ) : null}
+    </>
+  ) : (
+    <Button onClick={openAuthModal}>Login</Button>
+  )}
+</div>
       </div>
     </header>
   );

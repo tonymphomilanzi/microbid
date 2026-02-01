@@ -57,8 +57,8 @@ export default async function handler(req, res) {
         orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
         include: {
           listing: { select: { id: true, title: true, image: true, platform: true } },
-          buyer: { select: { id: true, email: true } },
-          seller: { select: { id: true, email: true } },
+        buyer: { select: { id: true, username: true } },
+      seller: { select: { id: true, username: true } },
           messages: { orderBy: { createdAt: "desc" }, take: 1 }, // last message preview
         },
       });

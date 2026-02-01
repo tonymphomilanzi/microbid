@@ -12,8 +12,9 @@ import {
   Pencil,
   Power,
   BarChart3,
-  MessageCircle,
+  MessageCircle,LogOut 
 } from "lucide-react";
+
 
 import ChatDialog from "../components/chat/ChatDialog";
 import { chatService } from "../services/chat.service";
@@ -40,7 +41,7 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-  const { isAdmin,refreshMe } = useAuth();
+const { isAdmin, refreshMe, logout } = useAuth();
   
   /////////////////
   // Plans (from /api/me)
@@ -178,7 +179,7 @@ const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
 </p>
           </div>
          
-          <div className="flex gap-2">
+          <div className="fl ex gap-2">
             <Button variant="outline" onClick={refresh}>
               Refresh
             </Button>
@@ -194,7 +195,10 @@ const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
       <Link to="/admin">Admin Panel</Link>
     </Button>
   )}
-
+<Button variant="outline" className="gap-2" onClick={logout}>
+  <LogOut className="h-4 w-4" />
+  Logout
+</Button>
           </div>
         </div>
 
@@ -420,15 +424,12 @@ const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
     <div className="grid gap-2">
       {conversations.map((c) => {
         const lastText = c.messages?.[0]?.text ?? "No messages yet";
-        const otherEmail = c.buyerId === me?.id ? c.seller?.email : c.buyer?.email;
-        const otherName = otherEmail?.split("@")[0] || "User";
-        const initials = otherName
-          .split(/[.\s_-]+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((p) => p[0]?.toUpperCase())
-          .join("");
+        const otherUser = c.buyerId === me?.id ? c.seller : c.buyer;
+const otherUsername = otherUser?.username || "";
 
+const displayName = otherUsername ? `@${otherUsername}` : "@private_user";
+const initials = otherUsername ? otherUsername.slice(0, 2).toUpperCase() : "U";
+        
         const unread = (c.unreadCount || 0) > 0;
 
         const ts = c.lastMessageAt || c.updatedAt;
@@ -465,7 +466,11 @@ const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
-                      {otherEmail || "Unknown"}
+                    <span className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
+  {otherUsername ? `@${otherUsername}` : (
+    <span className="select-none blur-[3px]">@private_user</span>
+  )}
+</span>
                     </div>
                     <div className="mt-0.5 flex items-center gap-2">
                       <Badge variant="outline" className="border-border/60 bg-muted/20">

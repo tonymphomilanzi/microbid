@@ -24,8 +24,8 @@ export default async function handler(req, res) {
         where: { id },
         include: {
           listing: { select: { id: true, title: true, image: true, platform: true } },
-          buyer: { select: { id: true, email: true } },
-          seller: { select: { id: true, email: true } },
+          buyer: { select: { id: true, username: true } },
+          seller: { select: { id: true, username: true } },
           messages: { orderBy: { createdAt: "asc" }, take: 400 },
         },
       });
