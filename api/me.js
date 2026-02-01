@@ -41,9 +41,15 @@ function buildSuggestions(base) {
   return out.slice(0, 3);
 }
 
+function monthKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
 export default async function handler(req, res) {
   try {
-    // ✅ PUBLIC username availability check (no auth required)
+    // PUBLIC: username availability check (no auth)
     const check = req.query?.checkUsername;
     if (req.method === "GET" && check) {
       const normalized = normalizeUsername(check);
@@ -57,12 +63,12 @@ export default async function handler(req, res) {
         });
       }
 
-      // Optional: if user is logged in, allow their current username
+      // If user is logged in, allow their current username
       let currentUid = null;
       try {
         const header = req.headers.authorization || "";
         if (header.startsWith("Bearer ")) {
-          const decoded = await requireAuth(req); // will succeed only if token valid
+          const decoded = await requireAuth(req);
           currentUid = decoded.uid;
         }
       } catch {
@@ -84,7 +90,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ available, normalized, suggestions });
     }
 
-    // ✅ Everything else requires auth
+    // PUBLIC: plans list for Pricing page (no auth)
+    if (req.method === "GET" && req.query?.public === "plans") {
+      const plans = await prisma.plan.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: "asc" }, { name: "asc" }],
+      });
+      return res.status(200).json({ plans });
+    }
+
+    // Everything else requires auth
     const decoded = await requireAuth(req);
 
     if (req.method === "GET") {
@@ -94,55 +109,109 @@ export default async function handler(req, res) {
         create: { id: decoded.uid, email: decoded.email ?? "unknown" },
         include: {
           listings: { orderBy: { createdAt: "desc" } },
-          purchases: {
+          purchases: { orderBy: { createdAt: "desc" }, include: { listing: true } },
+          sales: { orderBy: { createdAt: "desc" }, include: { listing: true } },
+          upgradeRequests: {
+            where: { status: "PENDING" },
             orderBy: { createdAt: "desc" },
-            include: { listing: true },
-          },
-          sales: {
-            orderBy: { createdAt: "desc" },
-            include: { listing: true },
+            take: 1,
           },
         },
       });
 
-      return res.status(200).json({ user });
+      const plans = await prisma.plan.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: "asc" }, { name: "asc" }],
+      });
+
+      const currentPlan =
+        plans.find((p) => p.name === user.tier) || plans.find((p) => p.name === "FREE") || null;
+
+      const mk = monthKey();
+      const usage = await prisma.usageMonth.upsert({
+        where: { userId_monthKey: { userId: user.id, monthKey: mk } },
+        update: {},
+        create: { userId: user.id, monthKey: mk },
+      });
+
+      const pendingUpgradeRequest = user.upgradeRequests?.[0] ?? null;
+
+      return res.status(200).json({ user, plans, currentPlan, usage, pendingUpgradeRequest });
     }
 
-    // Set/update username
+    // POST: set username OR request upgrade
     if (req.method === "POST") {
       const body = readJson(req);
-      const normalized = normalizeUsername(body.username);
 
-      if (!isValidUsername(normalized)) {
-        return res.status(400).json({
-          message: "Invalid username. Use 3-20 chars: a-z, 0-9, underscore.",
+      // Upgrade request
+      if (body.intent === "requestUpgrade") {
+        const planName = String(body.planName || "").toUpperCase();
+
+        if (!["PRO", "VIP"].includes(planName)) {
+          return res.status(400).json({ message: "Invalid plan. Only PRO or VIP upgrades allowed." });
+        }
+
+        const plan = await prisma.plan.findUnique({ where: { name: planName } });
+        if (!plan || !plan.isActive) return res.status(400).json({ message: "Plan not available." });
+
+        const dbUser = await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { email: decoded.email ?? "unknown" },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown" },
+          select: { id: true, tier: true },
         });
+
+        if (dbUser.tier === planName) {
+          return res.status(400).json({ message: "You are already on this plan." });
+        }
+
+        // prevent duplicate pending request
+        const existingPending = await prisma.upgradeRequest.findFirst({
+          where: { userId: dbUser.id, status: "PENDING" },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (existingPending) {
+          return res.status(409).json({ message: "You already have a pending upgrade request." });
+        }
+
+        const created = await prisma.upgradeRequest.create({
+          data: {
+            userId: dbUser.id,
+            requestedPlan: planName,
+            status: "PENDING",
+          },
+        });
+
+        return res.status(201).json({ request: created });
       }
 
-      const available = await usernameAvailable(normalized, decoded.uid);
-      if (!available) {
-        return res.status(409).json({ message: "Username is already taken." });
+      // Set/update username (backward compatible: accepts {username} or {intent:"setUsername", username})
+      if (body.username || body.intent === "setUsername") {
+        const normalized = normalizeUsername(body.username);
+
+        if (!isValidUsername(normalized)) {
+          return res.status(400).json({
+            message: "Invalid username. Use 3-20 chars: a-z, 0-9, underscore.",
+          });
+        }
+
+        const available = await usernameAvailable(normalized, decoded.uid);
+        if (!available) {
+          return res.status(409).json({ message: "Username is already taken." });
+        }
+
+        const updated = await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { username: normalized, email: decoded.email ?? "unknown" },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown", username: normalized },
+          select: { id: true, email: true, username: true, role: true, tier: true, isVerified: true },
+        });
+
+        return res.status(200).json({ user: updated });
       }
 
-      const updated = await prisma.user.upsert({
-        where: { id: decoded.uid },
-        update: { username: normalized, email: decoded.email ?? "unknown" },
-        create: {
-          id: decoded.uid,
-          email: decoded.email ?? "unknown",
-          username: normalized,
-        },
-        select: {
-          id: true,
-          email: true,
-          username: true,
-          role: true,
-          tier: true,
-          isVerified: true,
-        },
-      });
-
-      return res.status(200).json({ user: updated });
+      return res.status(400).json({ message: "Unknown action" });
     }
 
     res.setHeader("Allow", "GET, POST");

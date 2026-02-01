@@ -46,6 +46,8 @@ model User {
   messages            Message[]
 
   subscription UserSubscription?
+
+  upgradeRequests UpgradeRequest[]
 }
 
 model Listing {
@@ -149,15 +151,59 @@ model UsageMonth {
   @@index([userId])
 }
 
+enum BillingType {
+  FREE
+  MONTHLY
+  LIFETIME
+}
+
 model Plan {
-  id        String   @id @default(cuid())
-  name      String   @unique // FREE, PREMIUM
-  features  Json // { listingsPerMonth: 3, conversationsPerMonth: 10 }
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id           String      @id @default(cuid())
+  name         String      @unique // "FREE" | "PRO" | "VIP"
+  billingType  BillingType @default(FREE)
+
+  // pricing (cents). For FREE keep 0, for VIP use oneTimePriceCents
+  monthlyPriceCents Int    @default(0)
+  oneTimePriceCents Int    @default(0)
+
+  // Admin-editable limits/features
+  features     Json        // { listingsPerMonth: 3, conversationsPerMonth: 10, ... }
+
+  // UI
+  tagline      String?
+  highlight    Boolean     @default(false)
+  order        Int         @default(0)
+
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
 
   subscriptions UserSubscription[]
 }
+
+enum UpgradeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model UpgradeRequest {
+  id            String               @id @default(cuid())
+  userId        String
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  requestedPlan String               // "PRO" | "VIP"
+  status        UpgradeRequestStatus @default(PENDING)
+
+  note          String?
+  createdAt     DateTime             @default(now())
+  decidedAt     DateTime?
+  decidedBy     String?              // admin uid
+
+  @@index([userId])
+  @@index([status])
+}
+
+
 
 model UserSubscription {
   id     String @id @default(cuid())

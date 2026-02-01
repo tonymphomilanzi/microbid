@@ -37,4 +37,10 @@ export const listingsService = {
 
 setUsername: (username) =>
   api.post("/me", { username }).then((r) => r.data),
+
+getPlansPublic: () => api.get("/me", { params: { public: "plans" } }).then((r) => r.data),
+
+requestUpgrade: (planName) =>
+  api.post("/me", { intent: "requestUpgrade", planName }).then((r) => r.data),
 };
+

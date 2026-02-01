@@ -41,7 +41,14 @@ export default function Dashboard() {
   const [error, setError] = useState("");
 
   const { isAdmin,refreshMe } = useAuth();
-
+  
+  /////////////////
+  // Plans (from /api/me)
+const [plans, setPlans] = useState([]);
+const [currentPlan, setCurrentPlan] = useState(null);
+const [usage, setUsage] = useState(null);
+const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
+////////////////////////////////////
   //
   const [sp, setSp] = useSearchParams();
   const tab = sp.get("tab") || "";
@@ -79,20 +86,33 @@ export default function Dashboard() {
     }
   }
 
+
   async function refresh() {
-    setError("");
-    setLoading(true);
-    try {
-      const { user } = await listingsService.me();
-      setMe(user);
-      // Load inbox after user loads (auth required anyway)
-      await loadInbox();
-    } catch (e) {
-      setError(e?.response?.data?.message || e.message || "Failed to load dashboard");
-    } finally {
-      setLoading(false);
-    }
+  setError("");
+  setLoading(true);
+  try {
+    const res = await listingsService.me();
+
+    // backwards-safe destructuring
+    const user = res.user || res.user?.user || res.user; // just in case
+    const plans = res.plans || [];
+    const currentPlan = res.currentPlan || null;
+    const usage = res.usage || null;
+    const pendingUpgradeRequest = res.pendingUpgradeRequest || null;
+
+    setMe(user);
+    setPlans(plans);
+    setCurrentPlan(currentPlan);
+    setUsage(usage);
+    setPendingUpgradeRequest(pendingUpgradeRequest);
+
+    await loadInbox();
+  } catch (e) {
+    setError(e?.response?.data?.message || e.message || "Failed to load dashboard");
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     refresh();
@@ -189,6 +209,44 @@ export default function Dashboard() {
      <Button onClick={() => setSp({ tab: "settings" }, { replace: true })}>
   Set username
 </Button>
+    </div>
+  </div>
+) : null}
+
+
+
+{currentPlan ? (
+  <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="text-sm font-semibold">
+          Current plan: {currentPlan.name} • {currentPlan.billingType}
+        </div>
+
+        <div className="mt-1 text-sm text-muted-foreground">
+          Listings/month: {currentPlan.features?.listingsPerMonth ?? "—"} • Conversations/month:{" "}
+          {currentPlan.features?.conversationsPerMonth ?? "—"}
+        </div>
+
+        {usage ? (
+          <div className="mt-1 text-xs text-muted-foreground">
+            This month usage: listings {usage.listingsCreated ?? 0} /{" "}
+            {currentPlan.features?.listingsPerMonth ?? "—"} • conversations{" "}
+            {usage.conversationsStarted ?? 0} /{" "}
+            {currentPlan.features?.conversationsPerMonth ?? "—"}
+          </div>
+        ) : null}
+
+        {pendingUpgradeRequest ? (
+          <div className="mt-2 text-xs text-primary">
+            Upgrade request pending: {pendingUpgradeRequest.requestedPlan}
+          </div>
+        ) : null}
+      </div>
+
+      <Button asChild variant="outline">
+        <Link to="/pricing">Upgrade</Link>
+      </Button>
     </div>
   </div>
 ) : null}

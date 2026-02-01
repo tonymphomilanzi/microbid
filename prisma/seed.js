@@ -23,6 +23,51 @@ async function main() {
     ],
     skipDuplicates: true
   });
+
+
+async function upsertPlan(name, data) {
+  return prisma.plan.upsert({
+    where: { name },
+    update: data,
+    create: { name, ...data },
+  });
+}
+
+  await upsertPlan("FREE", {
+    billingType: "FREE",
+    monthlyPriceCents: 0,
+    oneTimePriceCents: 0,
+    features: { listingsPerMonth: 3, conversationsPerMonth: 5 },
+    tagline: "Start selling",
+    highlight: false,
+    order: 1,
+    isActive: true,
+  });
+
+  await upsertPlan("PRO", {
+    billingType: "MONTHLY",
+    monthlyPriceCents: 1500, // $15/mo (change later in admin)
+    oneTimePriceCents: 0,
+    features: { listingsPerMonth: 10, conversationsPerMonth: 50 },
+    tagline: "For serious sellers",
+    highlight: true,
+    order: 2,
+    isActive: true,
+  });
+
+  await upsertPlan("VIP", {
+    billingType: "LIFETIME",
+    monthlyPriceCents: 0,
+    oneTimePriceCents: 19900, // $199 lifetime (change later in admin)
+    features: { listingsPerMonth: 50, conversationsPerMonth: 200 },
+    tagline: "Lifetime access + best discounts",
+    highlight: false,
+    order: 3,
+    isActive: true,
+  });
+
+
+
 }
 
 main()

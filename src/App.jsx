@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import Home from "./pages/Home";
+import Pricing from "./pages/Pricing";
 import Marketplace from "./pages/Marketplace";
 import ListingDetails from "./pages/ListingDetails";
 import Dashboard from "./pages/Dashboard";
@@ -59,6 +60,8 @@ export default function App() {
   <Route path="categories" element={<AdminCategories />} />
 </Route>
 
+
+<Route path="/pricing" element={<Pricing />} />
       </Routes>
 
       <Footer />
