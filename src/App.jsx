@@ -63,10 +63,10 @@ export default function App() {
   <Route path="categories" element={<AdminCategories />} />
 </Route>
 
-
+<Route path="/feed" element={<Feed />} />
 <Route path="/pricing" element={<Pricing />} />
       </Routes>
-<Route path="/feed" element={<Feed />} />
+
       <Footer />
     </div>
   );
