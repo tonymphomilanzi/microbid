@@ -65,11 +65,11 @@ const navigate = useNavigate();
         title="Inbox"
       >
         <BellIcon className="h-6 w-6" />
-        {unreadChats > 0 ? (
-          <span className="absolute -right-1 -top-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground">
-            {unreadChats > 99 ? "99+" : unreadChats}
-          </span>
-        ) : null}
+     {unreadChats > 0 && (
+  <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
+    {unreadChats > 99 ? "99+" : unreadChats}
+  </span>
+)}
       </button>
 
       {/* Optional quick account button */}
