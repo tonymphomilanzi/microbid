@@ -10,6 +10,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import { listingsService } from "../services/listings.service";
 import { chatService } from "../services/chat.service";
+import { feedService } from "../services/feed.service";
 
 const AuthContext = createContext(null);
 
@@ -23,8 +24,11 @@ export function AuthProvider({ children }) {
   const [me, setMe] = useState(null);
   const [meLoading, setMeLoading] = useState(false);
 
-  // ✅ chat unread state
+  // chat unread
   const [unreadChats, setUnreadChats] = useState(0);
+
+  // feed unread
+  const [unreadFeed, setUnreadFeed] = useState(0);
 
   const refreshMe = useCallback(async () => {
     if (!auth.currentUser) {
@@ -53,13 +57,14 @@ export function AuthProvider({ children }) {
       } else {
         setMe(null);
         setUnreadChats(0);
+        setUnreadFeed(0);
       }
     });
 
     return () => unsub();
   }, [refreshMe]);
 
-  // ✅ Poll unread conversations count (wait until me.id exists)
+  // Poll chat unread
   useEffect(() => {
     if (!user || !me?.id) {
       setUnreadChats(0);
@@ -73,10 +78,8 @@ export function AuthProvider({ children }) {
         const { conversations } = await chatService.list();
 
         const total = (conversations || []).reduce((sum, c) => {
-          // preferred field
           if (typeof c.unreadCount === "number") return sum + c.unreadCount;
 
-          // fallback if unreadCount not present
           const fallback =
             c.buyerId === me.id ? Number(c.buyerUnread || 0) : Number(c.sellerUnread || 0);
 
@@ -85,12 +88,39 @@ export function AuthProvider({ children }) {
 
         if (alive) setUnreadChats(total);
       } catch {
-        // ignore token/network timing issues
+        // ignore
       }
     }
 
     poll();
     const t = setInterval(poll, 6000);
+
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [user, me?.id]);
+
+  // Poll feed unread
+  useEffect(() => {
+    if (!user || !me?.id) {
+      setUnreadFeed(0);
+      return;
+    }
+
+    let alive = true;
+
+    async function poll() {
+      try {
+        const { unreadFeedCount } = await feedService.unreadCount();
+        if (alive) setUnreadFeed(Number(unreadFeedCount || 0));
+      } catch {
+        // ignore
+      }
+    }
+
+    poll();
+    const t = setInterval(poll, 15000);
 
     return () => {
       alive = false;
@@ -105,6 +135,7 @@ export function AuthProvider({ children }) {
     setAuthModalOpen(false);
     setMe(null);
     setUnreadChats(0);
+    setUnreadFeed(0);
     await signOut(auth);
   }, []);
 
@@ -124,8 +155,8 @@ export function AuthProvider({ children }) {
       isAdmin,
       username,
 
-      //export unread chats so Navbar can show it
       unreadChats,
+      unreadFeed,
 
       logout,
     }),
@@ -139,6 +170,7 @@ export function AuthProvider({ children }) {
       isAdmin,
       username,
       unreadChats,
+      unreadFeed,
       logout,
     ]
   );

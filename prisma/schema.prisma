@@ -48,7 +48,30 @@ model User {
   subscription UserSubscription?
 
   upgradeRequests UpgradeRequest[]
+
+  lastFeedSeenAt DateTime?
+  feedPosts       FeedPost[]
 }
+
+
+model FeedPost {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  image     String?
+  category  String?
+  tags      String[] @default([]) // ["NEW","UPDATE","CHANGELOG"]
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([authorId])
+}
+
 
 model Listing {
   id          String       @id @default(cuid())

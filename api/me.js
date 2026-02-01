@@ -49,7 +49,9 @@ function monthKey(d = new Date()) {
 
 export default async function handler(req, res) {
   try {
-    // PUBLIC: username availability check (no auth)
+    // -------------------------
+    // ✅ PUBLIC: username check
+    // -------------------------
     const check = req.query?.checkUsername;
     if (req.method === "GET" && check) {
       const normalized = normalizeUsername(check);
@@ -90,7 +92,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ available, normalized, suggestions });
     }
 
-    // PUBLIC: plans list for Pricing page (no auth)
+    // -------------------------
+    // ✅ PUBLIC: plans for pricing page
+    // GET /api/me?public=plans
+    // -------------------------
     if (req.method === "GET" && req.query?.public === "plans") {
       const plans = await prisma.plan.findMany({
         where: { isActive: true },
@@ -99,9 +104,68 @@ export default async function handler(req, res) {
       return res.status(200).json({ plans });
     }
 
-    // Everything else requires auth
+    // -------------------------
+    // ✅ PUBLIC: feed list
+    // GET /api/me?public=feed
+    // optional: &q= &tag= &category=
+    // -------------------------
+    if (req.method === "GET" && req.query?.public === "feed") {
+      const q = String(req.query?.q || "");
+      const tag = String(req.query?.tag || ""); // NEW | UPDATE | CHANGELOG
+      const category = String(req.query?.category || "");
+
+      const posts = await prisma.feedPost.findMany({
+        where: {
+          ...(q
+            ? {
+                OR: [
+                  { title: { contains: q, mode: "insensitive" } },
+                  { body: { contains: q, mode: "insensitive" } },
+                  { category: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+          ...(tag ? { tags: { has: tag } } : {}),
+          ...(category ? { category } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: {
+          author: { select: { id: true, username: true, isVerified: true, tier: true } },
+        },
+      });
+
+      return res.status(200).json({ posts });
+    }
+
+    // -------------------------
+    // ✅ Everything else requires auth
+    // -------------------------
     const decoded = await requireAuth(req);
 
+    // -------------------------
+    // ✅ AUTH: feed unread count
+    // GET /api/me?feedUnread=1
+    // -------------------------
+    if (req.method === "GET" && req.query?.feedUnread === "1") {
+      const u = await prisma.user.findUnique({
+        where: { id: decoded.uid },
+        select: { lastFeedSeenAt: true },
+      });
+
+      const since = u?.lastFeedSeenAt ?? new Date(0);
+
+      const unreadFeedCount = await prisma.feedPost.count({
+        where: { createdAt: { gt: since } },
+      });
+
+      return res.status(200).json({ unreadFeedCount });
+    }
+
+    // -------------------------
+    // AUTH: main dashboard payload
+    // GET /api/me
+    // -------------------------
     if (req.method === "GET") {
       const user = await prisma.user.upsert({
         where: { id: decoded.uid },
@@ -125,7 +189,9 @@ export default async function handler(req, res) {
       });
 
       const currentPlan =
-        plans.find((p) => p.name === user.tier) || plans.find((p) => p.name === "FREE") || null;
+        plans.find((p) => p.name === user.tier) ||
+        plans.find((p) => p.name === "FREE") ||
+        null;
 
       const mk = monthKey();
       const usage = await prisma.usageMonth.upsert({
@@ -139,9 +205,23 @@ export default async function handler(req, res) {
       return res.status(200).json({ user, plans, currentPlan, usage, pendingUpgradeRequest });
     }
 
-    // POST: set username OR request upgrade
+    // -------------------------
+    // POST /api/me
+    // - requestUpgrade
+    // - setUsername
+    // - markFeedSeen
+    // -------------------------
     if (req.method === "POST") {
       const body = readJson(req);
+
+      // ✅ Mark feed as seen
+      if (body.intent === "markFeedSeen") {
+        await prisma.user.update({
+          where: { id: decoded.uid },
+          data: { lastFeedSeenAt: new Date() },
+        });
+        return res.status(200).json({ ok: true });
+      }
 
       // Upgrade request
       if (body.intent === "requestUpgrade") {
@@ -165,7 +245,6 @@ export default async function handler(req, res) {
           return res.status(400).json({ message: "You are already on this plan." });
         }
 
-        // prevent duplicate pending request
         const existingPending = await prisma.upgradeRequest.findFirst({
           where: { userId: dbUser.id, status: "PENDING" },
           orderBy: { createdAt: "desc" },
@@ -186,7 +265,7 @@ export default async function handler(req, res) {
         return res.status(201).json({ request: created });
       }
 
-      // Set/update username (backward compatible: accepts {username} or {intent:"setUsername", username})
+      // Set/update username
       if (body.username || body.intent === "setUsername") {
         const normalized = normalizeUsername(body.username);
 

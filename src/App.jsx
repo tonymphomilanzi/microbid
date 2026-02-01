@@ -16,6 +16,9 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminListings from "./pages/admin/AdminListings";
 import AdminPlatforms from "./pages/admin/AdminPlatforms";
 import AdminCategories from "./pages/admin/AdminCategories";
+import Feed from "./pages/Feed";
+
+
 export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -63,7 +66,7 @@ export default function App() {
 
 <Route path="/pricing" element={<Pricing />} />
       </Routes>
-
+<Route path="/feed" element={<Feed />} />
       <Footer />
     </div>
   );
