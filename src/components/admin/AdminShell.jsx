@@ -24,7 +24,7 @@ function Sidebar() {
   return (
     <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-border/60 lg:bg-card/40">
       <div className="flex h-16 items-center justify-between px-4 border-b border-border/60">
-        <div className="font-semibold tracking-tight">Microbid Admin</div>
+        <div className="font-semibold tracking-tight">Mikrobid Admin</div>
       </div>
 
       <div className="p-3 space-y-1">
