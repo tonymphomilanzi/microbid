@@ -207,6 +207,104 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: "Method not allowed" });
     }
 
+
+    // ---------------- FEED ----------------
+if (resource === "feed") {
+  const allowedTags = new Set(["NEW", "UPDATE", "CHANGELOG"]);
+
+  if (req.method === "GET") {
+    const q = (url.searchParams.get("q") || "").toString();
+
+    const posts = await prisma.feedPost.findMany({
+      where: q
+        ? {
+            OR: [
+              { title: { contains: q, mode: "insensitive" } },
+              { body: { contains: q, mode: "insensitive" } },
+              { category: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {},
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      },
+    });
+
+    return res.status(200).json({ posts });
+  }
+
+  if (req.method === "POST") {
+    const body = readJson(req);
+
+    const title = String(body.title || "").trim();
+    const text = String(body.body || "").trim();
+    const image = body.image ? String(body.image).trim() : null;
+    const category = body.category ? String(body.category).trim() : null;
+
+    const tagsRaw = Array.isArray(body.tags) ? body.tags.map((t) => String(t).toUpperCase()) : [];
+    const tags = tagsRaw.filter((t) => allowedTags.has(t)).slice(0, 5);
+
+    if (!title || !text) return res.status(400).json({ message: "Missing title/body" });
+
+    const created = await prisma.feedPost.create({
+      data: {
+        title,
+        body: text,
+        image,
+        category,
+        tags,
+        authorId: adminUid,
+      },
+      include: {
+        author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      },
+    });
+
+    return res.status(201).json({ post: created });
+  }
+
+  if (req.method === "PATCH") {
+    if (!id) return res.status(400).json({ message: "Missing feed post id" });
+
+    const body = readJson(req);
+
+    const tags =
+      body.tags !== undefined
+        ? (Array.isArray(body.tags) ? body.tags.map((t) => String(t).toUpperCase()) : [])
+            .filter((t) => allowedTags.has(t))
+            .slice(0, 5)
+        : undefined;
+
+    const updated = await prisma.feedPost.update({
+      where: { id },
+      data: {
+        ...(body.title !== undefined ? { title: String(body.title).trim() } : {}),
+        ...(body.body !== undefined ? { body: String(body.body).trim() } : {}),
+        ...(body.image !== undefined ? { image: body.image ? String(body.image).trim() : null } : {}),
+        ...(body.category !== undefined ? { category: body.category ? String(body.category).trim() : null } : {}),
+        ...(tags !== undefined ? { tags } : {}),
+      },
+      include: {
+        author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      },
+    });
+
+    return res.status(200).json({ post: updated });
+  }
+
+  if (req.method === "DELETE") {
+    if (!id) return res.status(400).json({ message: "Missing feed post id" });
+
+    await prisma.feedPost.delete({ where: { id } });
+    return res.status(200).json({ ok: true });
+  }
+
+  res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+  return res.status(405).json({ message: "Method not allowed" });
+}
+
     // ---------------- CATEGORIES ----------------
     if (resource === "categories") {
       if (req.method === "GET") {

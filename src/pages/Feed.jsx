@@ -79,7 +79,7 @@ export default function Feed() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Feed</h1>
           <p className="text-sm text-muted-foreground">
-            Product updates, news and changelogs — posted by the Microbid team.
+            Product updates, news and changelogs — posted by the Mikrobid team.
           </p>
         </div>
 
@@ -92,11 +92,11 @@ export default function Feed() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
-              <Input
+              {/**<Input
                 placeholder="Category (optional)"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-              />
+              />**/}
               <Button variant="outline" onClick={load} disabled={loading}>
                 Refresh
               </Button>
@@ -116,7 +116,7 @@ export default function Feed() {
             </div>
 
             <div className="text-xs text-muted-foreground">
-              Tip: Use tags for quick browsing. Categories are free-form for now.
+              Tip: Use tags for quick browsing.
             </div>
           </CardContent>
         </Card>

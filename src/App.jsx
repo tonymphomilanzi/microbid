@@ -17,6 +17,7 @@ import AdminListings from "./pages/admin/AdminListings";
 import AdminPlatforms from "./pages/admin/AdminPlatforms";
 import AdminCategories from "./pages/admin/AdminCategories";
 import Feed from "./pages/Feed";
+import AdminFeed from "./pages/admin/AdminFeed";
 
 
 export default function App() {
@@ -61,6 +62,7 @@ export default function App() {
   <Route path="listings" element={<AdminListings />} />
   <Route path="platforms" element={<AdminPlatforms />} />
   <Route path="categories" element={<AdminCategories />} />
+  <Route path="feed" element={<AdminFeed />} />
 </Route>
 
 <Route path="/feed" element={<Feed />} />

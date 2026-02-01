@@ -17,6 +17,7 @@ const nav = [
   { to: "/admin/listings", label: "Listings", Icon: ListBulletIcon },
   { to: "/admin/platforms", label: "Platforms", Icon: RectangleStackIcon },
   { to: "/admin/categories", label: "Categories", Icon: TagIcon },
+  { to: "/admin/feed", label: "Feed", Icon: NewspaperIcon },
 ];
 
 function Sidebar() {
