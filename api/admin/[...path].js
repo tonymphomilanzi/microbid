@@ -12,7 +12,8 @@ function readJson(req) {
 
 export default async function handler(req, res) {
   try {
-    await requireAdmin(req);
+    const { decoded } = await requireAdmin(req);
+    const adminUid = decoded.uid;
 
     const url = new URL(req.url, "http://localhost");
     // url.pathname could be:
