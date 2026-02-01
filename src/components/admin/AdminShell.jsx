@@ -8,7 +8,7 @@ import {
   RectangleStackIcon,
   ListBulletIcon,
   Bars3Icon,
-  ArrowLeftIcon,
+  ArrowLeftIcon,NewspaperIcon
 } from "@heroicons/react/24/outline";
 
 const nav = [
