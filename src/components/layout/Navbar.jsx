@@ -71,20 +71,7 @@ export default function Navbar() {
             <span className="hidden sm:inline">Feed</span>
           </NavLink>
 
-          {/* Dashboard link (optional) */}
-          {user ? (
-            <NavLink
-              to="/dashboard"
-              className={({ isActive }) =>
-                `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                  isActive ? "bg-muted font-medium" : "hover:bg-muted"
-                }`
-              }
-            >
-              <Squares2X2Icon className="h-5 w-5" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </NavLink>
-          ) : null}
+       
         </nav>
 
         <div className="flex items-center gap-2">
