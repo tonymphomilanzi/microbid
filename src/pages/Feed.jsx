@@ -96,7 +96,7 @@ export default function Feed() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Feed</h1>
           <p className="text-sm text-muted-foreground">
-            Updates, news and changelogs — posted by the Microbid team.
+            Updates, news and changelogs — posted by the Mikrobid team.
           </p>
         </div>
 
@@ -171,7 +171,8 @@ export default function Feed() {
         ) : (
           <div className="grid gap-4">
             {posts.map((p) => {
-              const shareUrl = `${window.location.origin}/feed?post=${p.id}`;
+              //const shareUrl = `${window.location.origin}/feed?post=${p.id}`;
+              const shareUrl = `${window.location.origin}/share/feed?id=${p.id}`;
               const flash = flashId === p.id;
 
               return (
