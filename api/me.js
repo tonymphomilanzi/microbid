@@ -50,7 +50,8 @@ function monthKey(d = new Date()) {
 export default async function handler(req, res) {
   try {
     // -------------------------
-    // ✅ PUBLIC: username check
+    // PUBLIC: username availability check
+    // GET /api/me?checkUsername=...
     // -------------------------
     const check = req.query?.checkUsername;
     if (req.method === "GET" && check) {
@@ -93,7 +94,7 @@ export default async function handler(req, res) {
     }
 
     // -------------------------
-    // ✅ PUBLIC: plans for pricing page
+    // PUBLIC: plans list
     // GET /api/me?public=plans
     // -------------------------
     if (req.method === "GET" && req.query?.public === "plans") {
@@ -105,17 +106,19 @@ export default async function handler(req, res) {
     }
 
     // -------------------------
-    // ✅ PUBLIC: feed list
+    // PUBLIC: feed list OR single post
     // GET /api/me?public=feed
-    // optional: &q= &tag= &category=
+    // optional: &id=... &q=... &tag=... &category=...
     // -------------------------
     if (req.method === "GET" && req.query?.public === "feed") {
+      const id = String(req.query?.id || "");
       const q = String(req.query?.q || "");
-      const tag = String(req.query?.tag || ""); // NEW | UPDATE | CHANGELOG
+      const tag = String(req.query?.tag || "").toUpperCase(); // NEW | UPDATE | CHANGELOG
       const category = String(req.query?.category || "");
 
       const posts = await prisma.feedPost.findMany({
         where: {
+          ...(id ? { id } : {}),
           ...(q
             ? {
                 OR: [
@@ -129,7 +132,7 @@ export default async function handler(req, res) {
           ...(category ? { category } : {}),
         },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: id ? 1 : 50,
         include: {
           author: { select: { id: true, username: true, isVerified: true, tier: true } },
         },
@@ -139,12 +142,12 @@ export default async function handler(req, res) {
     }
 
     // -------------------------
-    // ✅ Everything else requires auth
+    // Everything else requires auth
     // -------------------------
     const decoded = await requireAuth(req);
 
     // -------------------------
-    // ✅ AUTH: feed unread count
+    // AUTH: feed unread count
     // GET /api/me?feedUnread=1
     // -------------------------
     if (req.method === "GET" && req.query?.feedUnread === "1") {
@@ -189,9 +192,7 @@ export default async function handler(req, res) {
       });
 
       const currentPlan =
-        plans.find((p) => p.name === user.tier) ||
-        plans.find((p) => p.name === "FREE") ||
-        null;
+        plans.find((p) => p.name === user.tier) || plans.find((p) => p.name === "FREE") || null;
 
       const mk = monthKey();
       const usage = await prisma.usageMonth.upsert({
@@ -207,14 +208,14 @@ export default async function handler(req, res) {
 
     // -------------------------
     // POST /api/me
+    // - markFeedSeen
     // - requestUpgrade
     // - setUsername
-    // - markFeedSeen
     // -------------------------
     if (req.method === "POST") {
       const body = readJson(req);
 
-      // ✅ Mark feed as seen
+      // mark feed seen
       if (body.intent === "markFeedSeen") {
         await prisma.user.update({
           where: { id: decoded.uid },
@@ -223,12 +224,14 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // Upgrade request
+      // upgrade request
       if (body.intent === "requestUpgrade") {
         const planName = String(body.planName || "").toUpperCase();
 
         if (!["PRO", "VIP"].includes(planName)) {
-          return res.status(400).json({ message: "Invalid plan. Only PRO or VIP upgrades allowed." });
+          return res
+            .status(400)
+            .json({ message: "Invalid plan. Only PRO or VIP upgrades allowed." });
         }
 
         const plan = await prisma.plan.findUnique({ where: { name: planName } });
@@ -255,17 +258,13 @@ export default async function handler(req, res) {
         }
 
         const created = await prisma.upgradeRequest.create({
-          data: {
-            userId: dbUser.id,
-            requestedPlan: planName,
-            status: "PENDING",
-          },
+          data: { userId: dbUser.id, requestedPlan: planName, status: "PENDING" },
         });
 
         return res.status(201).json({ request: created });
       }
 
-      // Set/update username
+      // set username
       if (body.username || body.intent === "setUsername") {
         const normalized = normalizeUsername(body.username);
 
@@ -284,7 +283,14 @@ export default async function handler(req, res) {
           where: { id: decoded.uid },
           update: { username: normalized, email: decoded.email ?? "unknown" },
           create: { id: decoded.uid, email: decoded.email ?? "unknown", username: normalized },
-          select: { id: true, email: true, username: true, role: true, tier: true, isVerified: true },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            role: true,
+            tier: true,
+            isVerified: true,
+          },
         });
 
         return res.status(200).json({ user: updated });
