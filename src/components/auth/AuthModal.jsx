@@ -100,42 +100,61 @@ export default function AuthModal() {
     }
   }
 
-  async function signup() {
-    setBusy(true);
-    setMsg("");
+ async function signup() {
+  setBusy(true);
+  setMsg("");
 
-    if (!normalizedUsername) {
-      setBusy(false);
-      setMsg("Please choose a username.");
-      return;
-    }
-    if (available !== true) {
-      setBusy(false);
-      setMsg("Please choose an available username.");
-      return;
-    }
-
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-
-      // Save username after Firebase account creation
-      await listingsService.setUsername(normalizedUsername);
-
-      await refreshMe?.();
-      closeAuthModal();
-    } catch (e) {
-      const code = e?.code || "";
-      if (code === "auth/email-already-in-use") {
-        setTab("login");
-        setMsg("This email already has an account. Please login instead.");
-      } else {
-        setMsg(e?.message || "Sign up failed");
-      }
-    } finally {
-      setBusy(false);
-    }
+  if (!normalizedUsername) {
+    setBusy(false);
+    setMsg("Please choose a username.");
+    return;
+  }
+  if (available !== true) {
+    setBusy(false);
+    setMsg("Please choose an available username.");
+    return;
   }
 
+  const timeout = (ms) =>
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms));
+
+  try {
+    await createUserWithEmailAndPassword(auth, email, password);
+
+    // ✅ Ensure token exists before calling backend
+    await auth.currentUser.getIdToken(true);
+
+    // ✅ Save username (timeout prevents “stuck forever”)
+    await Promise.race([
+      listingsService.setUsername(normalizedUsername),
+      timeout(15000),
+    ]);
+
+    await refreshMe?.();
+    closeAuthModal();
+  } catch (e) {
+    const code = e?.code || "";
+    if (code === "auth/email-already-in-use") {
+      setTab("login");
+      setMsg("This email already has an account. Please login instead.");
+    } else {
+      // Important fallback: account may have been created but username failed.
+      setMsg(
+        e?.response?.data?.message ||
+          e.message ||
+          "Sign up failed. If your account was created, login and set username in Dashboard."
+      );
+
+      // Optional: if Firebase user exists, route them to username setup
+      if (auth.currentUser) {
+        closeAuthModal();
+        navigate("/dashboard?tab=settings");
+      }
+    }
+  } finally {
+    setBusy(false);
+  }
+}
   const googleProvider = new GoogleAuthProvider();
 
   async function loginWithGoogle() {
