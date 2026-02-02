@@ -30,7 +30,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [featured, setFeatured] = useState([]);
 
-  const STREAMING_KITS_SLUG = "streaming-kits"; // <-- must match Category.slug in DB
+  const STREAMING_KITS_SLUG = "streaming-kit"; // <-- must match Category.slug in DB
 
   const [streamingKits, setStreamingKits] = useState([]);
 
@@ -40,7 +40,7 @@ useEffect(() => {
   const isStreamingKit = (l) => {
     const slug = l?.category?.slug?.toLowerCase();
     const name = l?.category?.name?.toLowerCase();
-    return slug === STREAMING_KITS_SLUG || name === "streaming kits";
+    return slug === STREAMING_KITS_SLUG || name === "streaming-kit";
   };
 
   async function run() {
