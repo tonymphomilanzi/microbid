@@ -24,24 +24,49 @@ const CATEGORIES = [
 ];
 
 export default function Home() {
+
+
+  
   const [loading, setLoading] = useState(true);
   const [featured, setFeatured] = useState([]);
 
-  useEffect(() => {
-    let mounted = true;
-    async function run() {
-      setLoading(true);
-      try {
-        const { listings } = await listingsService.getListings();
-        if (!mounted) return;
-        setFeatured((listings ?? []).slice(0, 6));
-      } finally {
-        if (mounted) setLoading(false);
-      }
+  const STREAMING_KITS_SLUG = "streaming-kits"; // <-- must match Category.slug in DB
+
+  const [streamingKits, setStreamingKits] = useState([]);
+
+useEffect(() => {
+  let mounted = true;
+
+  const isStreamingKit = (l) => {
+    const slug = l?.category?.slug?.toLowerCase();
+    const name = l?.category?.name?.toLowerCase();
+    return slug === STREAMING_KITS_SLUG || name === "streaming kits";
+  };
+
+  async function run() {
+    setLoading(true);
+    try {
+      const { listings } = await listingsService.getListings();
+      if (!mounted) return;
+
+      const all = listings ?? [];
+
+      // ONLY streaming kits
+      const kits = all.filter(isStreamingKit).slice(0, 6);
+
+      // Featured EXCLUDING streaming kits
+      const nonKits = all.filter((l) => !isStreamingKit(l)).slice(0, 6);
+
+      setStreamingKits(kits);
+      setFeatured(nonKits);
+    } finally {
+      if (mounted) setLoading(false);
     }
-    run();
-    return () => (mounted = false);
-  }, []);
+  }
+
+  run();
+  return () => (mounted = false);
+}, []);
 
   const stats = useMemo(
     () => [
@@ -182,6 +207,30 @@ export default function Home() {
             <ListingGrid listings={featured} loading={loading} />
           </div>
         </section>
+
+        {/* STREAMING KIT FEATURES */}
+{streamingKits.length > 0 && (
+  <section className="py-8">
+    <div className="flex items-end justify-between gap-4">
+      <div className="space-y-1">
+        <h2 className="text-xl font-semibold tracking-tight">
+          Streaming kit features
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Dedicated listings from the Streaming Kits category.
+        </p>
+      </div>
+
+      <Button asChild variant="outline" className="hidden sm:inline-flex">
+        <Link to={`/marketplace?category=${STREAMING_KITS_SLUG}`}>Explore</Link>
+      </Button>
+    </div>
+
+    <div className="mt-5">
+      <ListingGrid listings={streamingKits} loading={loading} />
+    </div>
+  </section>
+)}
 
         {/* HOW IT WORKS */}
         <section className="py-10">
