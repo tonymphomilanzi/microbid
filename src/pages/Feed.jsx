@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
+import ShareSheet from "../components/shared/ShareSheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,10 +97,11 @@ function ShareMenu({ url, title, text }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Share2 className="h-4 w-4" />
-          Share
-        </Button>
+      <ShareSheet
+  url={shareUrl}
+  title={p.title}
+  text={p.body?.slice(0, 120)}
+/>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
