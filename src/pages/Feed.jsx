@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
 import { ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
 
+
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
 
 export default function Feed() {
