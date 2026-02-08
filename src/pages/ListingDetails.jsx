@@ -175,7 +175,9 @@ export default function ListingDetails() {
               </div>
             </div>
 
-            <p className="text-sm text-muted-foreground">{listing.description}</p>
+           <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words leading-6">
+  {listing.description}
+</div>
 
             <div className="grid grid-cols-2 gap-3">
               <Card className="border-border/60 bg-card/60">
