@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import ListingFilters from "../components/listings/ListingFilters";
 import ListingGrid from "../components/listings/ListingGrid";
 import { listingsService } from "../services/listings.service";
+import { Button } from "../components/ui/button";
+import { PlusCircle } from "lucide-react";
 
 export default function Marketplace() {
   const [sp, setSp] = useSearchParams();
@@ -58,11 +60,20 @@ export default function Marketplace() {
   return (
     <PageContainer>
       <div className="py-8 space-y-6">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-semibold tracking-tight">Marketplace</h2>
-          <p className="text-sm text-muted-foreground">
-            Browse listings without logging in. Login is required to buy or contact sellers.
-          </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <h2 className="text-2xl font-semibold tracking-tight">Marketplace</h2>
+            <p className="text-sm text-muted-foreground">
+              Browse listings without logging in. Login is required to buy or contact sellers.
+            </p>
+          </div>
+
+          <Button asChild className="gap-2">
+            <Link to="/create">
+              <PlusCircle className="h-4 w-4" />
+              Create Listing
+            </Link>
+          </Button>
         </div>
 
         <ListingFilters filters={filters} setFilters={setFilters} />
