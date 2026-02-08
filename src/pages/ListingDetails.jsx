@@ -35,49 +35,41 @@ export default function ListingDetails() {
   const [activeImage, setActiveImage] = useState("");
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    async function run() {
-      setLoading(true);
-      setError("");
-      setListing(null);
+  async function run() {
+    setLoading(true);
+    setError("");
+    setListing(null);
 
-      try {
-        const { listing } = await listingsService.getListing(id);
-        if (!mounted) return;
-        setListing(listing);
+    try {
+      const { listing } = await listingsService.getListing(id);
+      if (!mounted) return;
+      setListing(listing);
 
-        const imgs =
-          Array.isArray(listing?.images) && listing.images.length
-            ? listing.images
-            : listing?.image
-              ? [listing.image]
-              : [];
+      const gallery = [listing?.image, ...(listing?.images ?? [])].filter(Boolean);
+      const unique = Array.from(new Set(gallery)).slice(0, 7);
 
-        setActiveImage(imgs[0] || listing?.image || "");
-      } catch (e) {
-        const msg = e?.response?.data?.message || e.message || "Failed to load listing";
-        if (mounted) setError(msg);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      setActiveImage(unique[0] || "");
+    } catch (e) {
+      const msg = e?.response?.data?.message || e.message || "Failed to load listing";
+      if (mounted) setError(msg);
+    } finally {
+      if (mounted) setLoading(false);
     }
+  }
 
-    if (id) run();
-    return () => (mounted = false);
-  }, [id]);
+  if (id) run();
+  return () => (mounted = false);
+}, [id]);
 
-  const images = useMemo(() => {
-    if (!listing) return [];
-    const arr =
-      Array.isArray(listing.images) && listing.images.length
-        ? listing.images
-        : listing.image
-          ? [listing.image]
-          : [];
-    // ensure unique
-    return Array.from(new Set(arr)).slice(0, 6);
-  }, [listing]);
+const images = useMemo(() => {
+  if (!listing) return [];
+  const gallery = [listing?.image, ...(listing?.images ?? [])].filter(Boolean);
+  return Array.from(new Set(gallery)).slice(0, 7);
+}, [listing]);
+
+
 
   async function buy() {
     try {
@@ -131,39 +123,53 @@ export default function ListingDetails() {
       <div className="py-8 space-y-6">
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Left: Gallery */}
-          <div className="space-y-3">
-            <div className="overflow-hidden rounded-xl border border-border/60 bg-muted">
-              <img
-                src={activeImage || listing.image}
-                alt={listing.title}
-                className="h-full w-full object-cover"
-              />
-            </div>
+       {/* Left: Gallery */}
+<div className="space-y-3">
+  {/* Main image (responsive aspect ratio) */}
+  <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted aspect-[16/10] sm:aspect-[16/9]">
+    <img
+      src={activeImage || listing.image}
+      alt={listing.title}
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
+  </div>
 
-            {/* Thumbnails */}
-            {images.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {images.map((src) => {
-                  const selected = src === activeImage;
-                  return (
-                    <button
-                      key={src}
-                      type="button"
-                      onClick={() => setActiveImage(src)}
-                      className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition ${
-                        selected
-                          ? "border-primary/40 ring-2 ring-primary/20"
-                          : "border-border/60 hover:border-primary/20"
-                      }`}
-                      title="View image"
-                    >
-                      <img src={src} alt="Listing thumbnail" className="h-full w-full object-cover" />
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
+  {/* Thumbnails: grid on mobile, scroll row on bigger screens */}
+  {images.length > 1 ? (
+    <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-2 sm:overflow-x-auto sm:pb-1 sm:[-ms-overflow-style:none] sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
+      {images.map((src) => {
+        const selected = src === activeImage;
+
+        return (
+          <button
+            key={src}
+            type="button"
+            onClick={() => setActiveImage(src)}
+            className={[
+              "relative overflow-hidden rounded-lg border transition",
+              // mobile thumbnail sizing
+              "aspect-[4/3] w-full",
+              // desktop sizing (scroll row)
+              "sm:h-16 sm:w-24 sm:shrink-0 sm:aspect-auto",
+              selected
+                ? "border-primary/40 ring-2 ring-primary/20"
+                : "border-border/60 hover:border-primary/20",
+            ].join(" ")}
+            title="View image"
+          >
+            <img
+              src={src}
+              alt="Listing thumbnail"
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </button>
+        );
+      })}
+    </div>
+  ) : null}
+</div>
 
           {/* Right: Details */}
           <div className="space-y-4">
