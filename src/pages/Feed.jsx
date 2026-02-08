@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
 import { ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
+import FeedPostSkeleton from "../components/feed/FeedPostSkeleton";
 
 
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
