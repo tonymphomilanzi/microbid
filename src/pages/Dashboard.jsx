@@ -52,15 +52,29 @@ const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
 ////////////////////////////////////
   //
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") || "";
+
+const tabParam = sp.get("tab") || "";
+
+const activeTab = useMemo(() => {
+  const allowed = new Set(["listings", "inbox", "purchases", "sales"]);
+  return allowed.has(tabParam) ? tabParam : "listings";
+}, [tabParam]);
+
+function setTab(next) {
+  const nextSp = new URLSearchParams(sp);
+
+  // optional: keep URL clean by removing tab when on default tab
+  if (!next || next === "listings") nextSp.delete("tab");
+  else nextSp.set("tab", next);
+
+  setSp(nextSp, { replace: true });
+}
   //username states
   const [usernameDialogOpen, setUsernameDialogOpen] = useState(false);
 
-  useEffect(() => {
-  if (tab === "settings") {
-    setUsernameDialogOpen(true);
-  }
-}, [tab]);
+ useEffect(() => {
+  if (tabParam === "settings") setUsernameDialogOpen(true);
+}, [tabParam]);
 
 
   // Inbox
@@ -287,7 +301,7 @@ const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
           ))}
         </div>
 
-        <Tabs defaultValue="listings">
+       <Tabs value={activeTab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="listings">My Listings</TabsTrigger>
             <TabsTrigger value="inbox" className="gap-2">
