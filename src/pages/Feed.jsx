@@ -171,12 +171,14 @@ export default function Feed() {
                   <div className="relative aspect-[16/9] bg-muted">
                     {p.image ? (
                       <>
+                      <Link to={`/feed/${p.id}`} state={{ post: p }}>
                         <img
                           src={p.image}
                           alt={p.title}
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                           loading="lazy"
                         />
+                        </Link>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/55 via-transparent to-transparent opacity-70" />
                       </>
                     ) : (
@@ -188,7 +190,9 @@ export default function Feed() {
                   <CardContent className="p-4 sm:p-5">
                     <div className="space-y-3">
                       <h2 className="text-base font-semibold leading-snug">
+                        <Link to={`/feed/${p.id}`} state={{ post: p }}>
                         <span className="line-clamp-2">{p.title}</span>
+                        </Link>
                       </h2>
 
                       <Button asChild variant="outline" className="w-full gap-2">
