@@ -12,6 +12,8 @@ import { listingsService } from "../../services/listings.service";
 import ImageUpload from "./ImageUpload";
 import { Info, Loader2 } from "lucide-react";
 
+const MAX_EXTRA_IMAGES = 6;
+
 const defaultMetrics = (platform) => {
   if (platform === "YouTube") {
     return {
@@ -51,7 +53,8 @@ export default function CreateListingForm({ initial }) {
     categoryId: "",
     price: "",
     description: "",
-    image: "",
+    image: "", // cover image
+    images: [], // extra gallery images (max 6)
     status: "ACTIVE",
     metrics: defaultMetrics("YouTube"),
   });
@@ -75,8 +78,9 @@ export default function CreateListingForm({ initial }) {
         setMeRole(me?.user?.role ?? "USER");
 
         // Hide admin-only categories for non-admin
-        const filteredCats =
-          (categories ?? []).filter((c) => (me?.user?.role === "ADMIN" ? true : !c.isAdminOnly));
+        const filteredCats = (categories ?? []).filter((c) =>
+          me?.user?.role === "ADMIN" ? true : !c.isAdminOnly
+        );
 
         setCategories(filteredCats);
 
@@ -113,6 +117,7 @@ export default function CreateListingForm({ initial }) {
       price: String(initial.price ?? ""),
       description: initial.description ?? "",
       image: initial.image ?? "",
+      images: initial.images ?? [], // <-- important
       status: initial.status ?? "ACTIVE",
       metrics: initial.metrics ?? defaultMetrics(initial.platform ?? "YouTube"),
     });
@@ -176,7 +181,7 @@ export default function CreateListingForm({ initial }) {
     setError("");
 
     if (!canSubmit) {
-      setError("Please fill all required fields and upload an image.");
+      setError("Please fill all required fields and upload a cover image.");
       return;
     }
 
@@ -187,6 +192,7 @@ export default function CreateListingForm({ initial }) {
         price: Number(form.price),
         metrics: form.metrics ?? null,
         categoryId: form.categoryId || null,
+        images: (form.images ?? []).filter(Boolean).slice(0, MAX_EXTRA_IMAGES),
       };
 
       const { listing } = await listingsService.upsertListing(payload);
@@ -243,9 +249,7 @@ export default function CreateListingForm({ initial }) {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Platforms are admin-managed.
-                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">Platforms are admin-managed.</p>
                 </div>
 
                 <div>
@@ -389,7 +393,10 @@ export default function CreateListingForm({ initial }) {
                     placeholder='e.g. "US", "UK", "Nigeria"'
                     value={form.metrics.countryTop ?? ""}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, metrics: { ...f.metrics, countryTop: e.target.value } }))
+                      setForm((f) => ({
+                        ...f,
+                        metrics: { ...f.metrics, countryTop: e.target.value },
+                      }))
                     }
                   />
                 </div>
@@ -447,7 +454,35 @@ export default function CreateListingForm({ initial }) {
             <ImageUpload
               value={form.image}
               onChange={(url) => setForm((f) => ({ ...f, image: url }))}
+              mode="cover"
             />
+
+            <Separator className="bg-border/60" />
+
+            <div>
+              <div className="text-sm font-semibold">More images (optional)</div>
+              <p className="text-xs text-muted-foreground">
+                Add up to {MAX_EXTRA_IMAGES} extra images (shown as a gallery on the listing details
+                page).
+              </p>
+
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                {Array.from({ length: MAX_EXTRA_IMAGES }).map((_, idx) => (
+                  <ImageUpload
+                    key={idx}
+                    mode="tile"
+                    value={form.images?.[idx] ?? ""}
+                    onChange={(url) => {
+                      setForm((f) => {
+                        const next = [...(f.images ?? [])];
+                        next[idx] = url;
+                        return { ...f, images: next.slice(0, MAX_EXTRA_IMAGES) };
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </form>
       </CardContent>
