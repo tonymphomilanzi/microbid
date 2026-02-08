@@ -9,4 +9,6 @@ export const feedService = {
 
   markSeen: () =>
     api.post("/me", { intent: "markFeedSeen" }).then((r) => r.data),
+
+  
 };

@@ -1,39 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { Card, CardContent } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
-import ShareSheet from "../components/shared/ShareSheet";
 
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
 
-function TagBadge({ tag }) {
-  const map = {
-    NEW: "bg-emerald-500/15 text-emerald-300 border-emerald-500/20",
-    UPDATE: "bg-sky-500/15 text-sky-300 border-sky-500/20",
-    CHANGELOG: "bg-violet-500/15 text-violet-300 border-violet-500/20",
-  };
-  return (
-    <Badge variant="outline" className={map[tag] || "border-border/60 bg-muted/20"}>
-      {tag}
-    </Badge>
-  );
-}
-
-function AuthorHandle({ username }) {
-  if (username) return <span className="font-medium">@{username}</span>;
-  return <span className="select-none blur-[3px]">@private_user</span>;
-}
-
 export default function Feed() {
   const { user } = useAuth();
-  const [sp, setSp] = useSearchParams();
+  const [sp] = useSearchParams();
+  const navigate = useNavigate();
 
+  // Backward compatibility: if someone hits /feed?post=xxx, send them to full post page
   const highlightId = sp.get("post") || "";
+  useEffect(() => {
+    if (highlightId) navigate(`/feed/${highlightId}`, { replace: true });
+  }, [highlightId, navigate]);
 
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState([]);
@@ -43,7 +28,6 @@ export default function Feed() {
   const [category, setCategory] = useState("");
 
   const [error, setError] = useState("");
-  const [flashId, setFlashId] = useState("");
 
   const params = useMemo(() => {
     return {
@@ -76,19 +60,6 @@ export default function Feed() {
     if (!user) return;
     feedService.markSeen().catch(() => {});
   }, [user]);
-
-  // Scroll + highlight if opened via shared link
-  useEffect(() => {
-    if (!highlightId) return;
-    if (loading) return;
-
-    const el = document.getElementById(`post-${highlightId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-      setFlashId(highlightId);
-      setTimeout(() => setFlashId(""), 2200);
-    }
-  }, [highlightId, loading]);
 
   return (
     <PageContainer>
@@ -131,19 +102,6 @@ export default function Feed() {
                 </Button>
               ))}
             </div>
-
-            {highlightId ? (
-              <div className="text-xs text-muted-foreground">
-                Showing shared post •{" "}
-                <Button variant="ghost" size="sm" onClick={() => setSp({}, { replace: true })}>
-                  Clear
-                </Button>
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground">
-                Tip: Share posts using the Share button.
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -161,7 +119,7 @@ export default function Feed() {
           </Card>
         ) : null}
 
-        {/* Posts */}
+        {/* Posts (preview only) */}
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading feed…</div>
         ) : posts.length === 0 ? (
@@ -169,71 +127,41 @@ export default function Feed() {
             <CardContent className="p-6 text-sm text-muted-foreground">No posts yet.</CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4">
-            {posts.map((p) => {
-              //const shareUrl = `${window.location.origin}/feed?post=${p.id}`;
-              const shareUrl = `${window.location.origin}/share/feed?id=${p.id}`;
-              const flash = flashId === p.id;
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {posts.map((p) => (
+              <Card
+                key={p.id}
+                className="border-border/60 bg-card/60 backdrop-blur overflow-hidden"
+              >
+                {p.image ? (
+                  <div className="relative aspect-[16/9] bg-muted">
+                    <img
+                      src={p.image}
+                      alt={p.title}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <div className="aspect-[16/9] bg-muted/30" />
+                )}
 
-              return (
-                <Card
-                  key={p.id}
-                  id={`post-${p.id}`}
-                  className={[
-                    "border-border/60 bg-card/60 backdrop-blur overflow-hidden scroll-mt-24 transition",
-                    flash ? "ring-2 ring-primary/30" : "",
-                  ].join(" ")}
-                >
-                  {p.image ? (
-                    <div className="relative aspect-[16/7] bg-muted">
-                      <img
-                        src={p.image}
-                        alt={p.title}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
-                    </div>
-                  ) : null}
+                <CardContent className="p-4">
+                  <h2 className="text-sm font-semibold leading-snug line-clamp-2">
+                    {p.title}
+                  </h2>
 
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-base font-semibold truncate">{p.title}</h2>
-
-                          {(p.tags || []).map((t) => (
-                            <TagBadge key={t} tag={t} />
-                          ))}
-
-                          {p.category ? (
-                            <Badge variant="outline" className="border-border/60 bg-muted/20">
-                              {p.category}
-                            </Badge>
-                          ) : null}
-                        </div>
-
-                        <div className="text-xs text-muted-foreground">
-                          Posted by <AuthorHandle username={p.author?.username} /> •{" "}
-                          {new Date(p.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-
-                      {/* ✅ Instagram-style bottom sheet share */}
-                      <ShareSheet
-                        url={shareUrl}
-                        title={p.title}
-                        text={p.body?.slice(0, 120)}
-                      />
-                    </div>
-
-                    <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-                      {p.body}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                  <div className="mt-3">
+                    <Button asChild variant="outline" size="sm" className="w-full">
+                      {/* pass post in state so details loads instantly */}
+                      <Link to={`/feed/${p.id}`} state={{ post: p }}>
+                        See more
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
       </div>
