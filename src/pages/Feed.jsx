@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
+import { ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
 
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
 
@@ -14,7 +15,7 @@ export default function Feed() {
   const [sp] = useSearchParams();
   const navigate = useNavigate();
 
-  // Backward compatibility: if someone hits /feed?post=xxx, send them to full post page
+  // Backward compatibility: /feed?post=xxx -> /feed/xxx
   const highlightId = sp.get("post") || "";
   useEffect(() => {
     if (highlightId) navigate(`/feed/${highlightId}`, { replace: true });
@@ -55,116 +56,152 @@ export default function Feed() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.q, params.tag, params.category]);
 
-  // Mark as seen (so navbar badge resets) when opening the feed
+  // Mark as seen when opening feed
   useEffect(() => {
     if (!user) return;
     feedService.markSeen().catch(() => {});
   }, [user]);
 
   return (
-    <PageContainer>
-      <div className="py-8 space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Feed</h1>
-          <p className="text-sm text-muted-foreground">
-            Updates, news and changelogs — posted by the Mikrobid team.
-          </p>
-        </div>
+    <div className="relative overflow-hidden">
+      {/* Background glow */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 left-[-10%] h-[520px] w-[520px] rounded-full bg-primary/15 blur-3xl" />
+        <div className="absolute top-40 right-[-10%] h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(900px_circle_at_30%_0%,rgba(250,204,21,0.10),transparent_55%)]" />
+      </div>
 
-        {/* Filters */}
-        <Card className="border-border/60 bg-card/60 backdrop-blur">
-          <CardContent className="p-4 space-y-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              <Input
-                placeholder="Search updates..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-              <Input
-                placeholder="Category (optional)"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              />
-              <Button variant="outline" onClick={load} disabled={loading}>
-                Refresh
-              </Button>
-            </div>
+      <PageContainer className="relative">
+        <div className="py-8 space-y-6">
+          {/* Header */}
+          <section className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Feed{" "}
+              <span className="bg-gradient-to-r from-primary to-yellow-400 bg-clip-text text-transparent">
+                updates
+              </span>
+            </h1>
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              Updates, news and changelogs — posted by the Mikrobid team.
+            </p>
+          </section>
 
-            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {TAGS.map((t) => (
-                <Button
-                  key={t}
-                  variant={t === tag ? "default" : "outline"}
-                  className="shrink-0 rounded-full"
-                  onClick={() => setTag(t)}
-                >
-                  {t}
+          {/* Filters */}
+          <Card className="rounded-2xl border-border/60 bg-card/60 backdrop-blur">
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search updates..."
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                  />
+                </div>
+
+                <div className="relative">
+                  <Folder className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Category (optional)"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                  />
+                </div>
+
+                <Button variant="outline" onClick={load} disabled={loading} className="gap-2">
+                  <RefreshCcw className="h-4 w-4" />
+                  Refresh
                 </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
 
-        {error ? (
-          <Card className="border-border/60 bg-card/60">
-            <CardContent className="p-5">
-              <div className="text-sm font-medium">Could not load feed</div>
-              <div className="mt-1 text-sm text-muted-foreground">{error}</div>
-              <div className="mt-4">
-                <Button variant="outline" onClick={load}>
-                  Retry
-                </Button>
+              <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {TAGS.map((t) => (
+                  <Button
+                    key={t}
+                    variant={t === tag ? "default" : "outline"}
+                    className="shrink-0 rounded-full"
+                    onClick={() => setTag(t)}
+                  >
+                    {t}
+                  </Button>
+                ))}
               </div>
             </CardContent>
           </Card>
-        ) : null}
 
-        {/* Posts (preview only) */}
-        {loading ? (
-          <div className="text-sm text-muted-foreground">Loading feed…</div>
-        ) : posts.length === 0 ? (
-          <Card className="border-border/60 bg-card/60">
-            <CardContent className="p-6 text-sm text-muted-foreground">No posts yet.</CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {posts.map((p) => (
-              <Card
-                key={p.id}
-                className="border-border/60 bg-card/60 backdrop-blur overflow-hidden"
-              >
-                {p.image ? (
+          {error ? (
+            <Card className="rounded-2xl border-border/60 bg-card/60">
+              <CardContent className="p-5">
+                <div className="text-sm font-medium">Could not load feed</div>
+                <div className="mt-1 text-sm text-muted-foreground">{error}</div>
+                <div className="mt-4">
+                  <Button variant="outline" onClick={load}>
+                    Retry
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {/* Posts (preview-only) */}
+       {loading ? (
+  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    {Array.from({ length: 6 }).map((_, i) => (
+      <FeedPostSkeleton key={i} />
+    ))}
+  </div>
+) : posts.length === 0 ? (
+  <Card className="rounded-2xl border-border/60 bg-card/60">
+    <CardContent className="p-6 text-sm text-muted-foreground">
+      No posts yet.
+    </CardContent>
+  </Card>
+) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {posts.map((p) => (
+                <Card
+                  key={p.id}
+                  className="group overflow-hidden rounded-2xl border-border/60 bg-card/55 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5"
+                >
+                  {/* Image */}
                   <div className="relative aspect-[16/9] bg-muted">
-                    <img
-                      src={p.image}
-                      alt={p.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
+                    {p.image ? (
+                      <>
+                        <img
+                          src={p.image}
+                          alt={p.title}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                          loading="lazy"
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/55 via-transparent to-transparent opacity-70" />
+                      </>
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-muted/40 to-muted/10" />
+                    )}
                   </div>
-                ) : (
-                  <div className="aspect-[16/9] bg-muted/30" />
-                )}
 
-                <CardContent className="p-4">
-                  <h2 className="text-sm font-semibold leading-snug line-clamp-2">
-                    {p.title}
-                  </h2>
+                  {/* Title + CTA */}
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="space-y-3">
+                      <h2 className="text-base font-semibold leading-snug">
+                        <span className="line-clamp-2">{p.title}</span>
+                      </h2>
 
-                  <div className="mt-3">
-                    <Button asChild variant="outline" size="sm" className="w-full">
-                      {/* pass post in state so details loads instantly */}
-                      <Link to={`/feed/${p.id}`} state={{ post: p }}>
-                        See more
-                      </Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-    </PageContainer>
+                      <Button asChild variant="outline" className="w-full gap-2">
+                        <Link to={`/feed/${p.id}`} state={{ post: p }}>
+                          See more <ArrowRight className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </PageContainer>
+    </div>
   );
 }
