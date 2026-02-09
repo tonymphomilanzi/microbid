@@ -1,6 +1,17 @@
 import { prisma } from "../_lib/prisma.js";
 import { requireAuth } from "../_lib/auth.js";
 
+async function optionalAuthUid(req) {
+  try {
+    const header = req.headers.authorization || "";
+    if (!header.startsWith("Bearer ")) return null;
+    const decoded = await requireAuth(req);
+    return decoded?.uid || null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   try {
     const rawId = req.query?.id;
@@ -9,34 +20,53 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ message: "Missing listing id" });
 
     if (req.method === "GET") {
+      const uid = await optionalAuthUid(req); // null if not logged in
+
       const listing = await prisma.listing.findUnique({
         where: { id },
         include: {
           seller: {
+            // do NOT return email publicly
             select: {
               id: true,
-              email: true,
               username: true,
               isVerified: true,
               tier: true,
             },
           },
           category: true,
+
+          // counts for likes/comments
+          _count: { select: { likes: true, comments: true } },
+
+          // likedByMe (only if logged in)
+          ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
         },
       });
 
       if (!listing) return res.status(404).json({ message: "Not found" });
 
       // Ensure images always exists in response (backward compatibility)
+      const images =
+        Array.isArray(listing.images) && listing.images.length
+          ? listing.images
+          : listing.image
+            ? [listing.image]
+            : [];
+
       const safeListing = {
         ...listing,
-        images:
-          Array.isArray(listing.images) && listing.images.length
-            ? listing.images
-            : listing.image
-              ? [listing.image]
-              : [],
+        images,
+
+        // flatten counts into fields your UI can use
+        likeCount: listing._count?.likes ?? 0,
+        commentCount: listing._count?.comments ?? 0,
+        likedByMe: uid ? (listing.likes?.length ?? 0) > 0 : false,
       };
+
+      // remove prisma internal fields from response
+      delete safeListing._count;
+      if (safeListing.likes) delete safeListing.likes;
 
       return res.status(200).json({ listing: safeListing });
     }
