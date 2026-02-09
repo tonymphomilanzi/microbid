@@ -259,7 +259,7 @@ export default function FeedPostDetails() {
               <ShareSheet url={shareUrl} title={post.title} text={(post.body || "").slice(0, 120)}>
   <button
     type="button"
-    className="flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20"
+    className="flex items-center justify-center gap-2 border-x border-border/60 px-3 py-3 text-sm transition hover:bg-muted/20"
   >
     <Share2 className="h-4 w-4 text-muted-foreground" />
     <span className="font-medium">Share</span>
