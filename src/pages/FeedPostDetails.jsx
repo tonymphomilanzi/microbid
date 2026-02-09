@@ -303,8 +303,8 @@ async function removeCommentConfirmed() {
 
         <Card className="border-border/60 bg-card/60 overflow-hidden">
           {post.image ? (
-            <div className="relative aspect-[16/7] bg-muted">
-              <img src={post.image} alt={post.title} className="h-full w-full object-cover" />
+            <div className="relative w-full overflow-hidden bg-muted aspect-[16/10] sm:aspect-[16/7]">
+              <img src={post.image} alt={post.title} className="h-full w-full object-contain bg-muted" />
             </div>
           ) : null}
 
@@ -469,35 +469,37 @@ async function removeCommentConfirmed() {
                 </div>
 
                 {/* composer (chat-like) */}
-                <div className="mt-3 rounded-xl border border-border/60 bg-card/60 p-3">
-                  <div className="flex items-end gap-2">
-                    <Textarea
-                      ref={commentInputRef}
-                      placeholder={user ? "Write a comment…" : "Login to comment…"}
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      disabled={!user || commentLoading}
-                      rows={2}
-                      className="min-h-[44px] resize-none"
-                      onKeyDown={(e) => {
-                        // Enter to send (Shift+Enter for newline)
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          onAddComment();
-                        }
-                      }}
-                    />
+                <div className="mt-3 rounded-2xl border border-border/60 bg-card/60 p-3">
+  <div className="flex items-end gap-2">
+    <Textarea
+      ref={commentInputRef}
+      placeholder={user ? "Write a comment…" : "Login to comment…"}
+      value={commentText}
+      onChange={(e) => setCommentText(e.target.value)}
+      disabled={!user || commentLoading}
+      rows={2}
+      className="min-h-[44px] resize-none rounded-2xl bg-muted/20"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          onAddComment();
+        }
+      }}
+    />
 
-                    <Button
-                      type="button"
-                      className="h-11 shrink-0 gap-2"
-                      disabled={!user || commentLoading}
-                      onClick={onAddComment}
-                    >
-                      <Send className="h-4 w-4" />
-                      Send
-                    </Button>
-                  </div>
+    <Button
+      type="button"
+      size="icon"
+      className="h-11 w-11 shrink-0 rounded-full"
+      disabled={!user || commentLoading}
+      onClick={onAddComment}
+      aria-label="Send comment"
+      title="Send"
+    >
+      <Send className="h-5 w-5" />
+    </Button>
+  </div>
+
 
                   {!user ? (
                     <div className="mt-2 text-xs text-muted-foreground">
