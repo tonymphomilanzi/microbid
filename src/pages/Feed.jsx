@@ -213,13 +213,13 @@ export default function Feed() {
                 >
                   {/* Image */}
                   <Link to={`/feed/${p.id}`} state={{ post: p }}>
-                  <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted aspe">
+                    <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted aspect-[16/10] sm:aspect-[16/9]">
                     {p.image ? (
                       <>
                         <img
                           src={p.image}
                           alt={p.title}
-                          className="h-full w-full object-contain bg-muted transition duration-300 group-hover:scale-[1.03]"
+                          className="h-full w-full object-cover bg-muted transition duration-300 group-hover:scale-[1.03]"
                           loading="lazy"
                         />
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/55 via-transparent to-transparent opacity-70" />
