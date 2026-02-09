@@ -303,9 +303,23 @@ async function removeCommentConfirmed() {
 
         <Card className="border-border/60 bg-card/60 overflow-hidden">
           {post.image ? (
-            <div className="relative w-full overflow-hidden bg-muted aspect-[16/10] sm:aspect-[16/7]">
-              <img src={post.image} alt={post.title} className="h-full w-full object-contain bg-muted" />
-            </div>
+         <div className="relative w-full overflow-hidden bg-muted aspect-[16/10] sm:aspect-[16/7]">
+            <img
+    src={post.image}
+    alt=""
+    aria-hidden="true"
+    className="absolute inset-0 h-full w-full object-cover blur-2xl scale-110 opacity-40"
+    loading="lazy"
+  />
+    <img
+    src={post.image}
+    alt={post.title}
+    className="relative z-10 h-full w-full object-contain"
+    loading="lazy"
+  />
+   <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/10 via-transparent to-transparent" />
+</div>
+          
           ) : null}
 
           <CardContent className="p-6 space-y-4">
