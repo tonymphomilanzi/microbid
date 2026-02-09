@@ -10,7 +10,7 @@ import FeedPostSkeleton from "../components/feed/FeedPostSkeleton";
 import { Heart, MessageSquare, ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
 
 // shadcn toast (adjust path if yours differs)
-import { useToast } from "../components/ui/use-toast";
+import { useToast } from "../hooks/use-toast";
 import { ToastAction } from "../components/ui/toast";
 
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
