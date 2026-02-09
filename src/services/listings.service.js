@@ -42,5 +42,16 @@ getPlansPublic: () => api.get("/me", { params: { public: "plans" } }).then((r) =
 
 requestUpgrade: (planName) =>
   api.post("/me", { intent: "requestUpgrade", planName }).then((r) => r.data),
+
+
+  // Listing social (likes/comments)
+  toggleListingLike: (listingId) =>
+    api.post("/listings", { intent: "toggleListingLike", listingId }).then((r) => r.data),
+
+  listListingComments: (listingId) =>
+    api.get("/listings", { params: { public: "listingComments", listingId } }).then((r) => r.data),
+
+  addListingComment: (listingId, body) =>
+    api.post("/listings", { intent: "addListingComment", listingId, body }).then((r) => r.data),
 };
 

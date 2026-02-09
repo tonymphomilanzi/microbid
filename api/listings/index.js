@@ -11,6 +11,17 @@ function readJson(req) {
   return {};
 }
 
+async function optionalAuthUid(req) {
+  try {
+    const header = req.headers.authorization || "";
+    if (!header.startsWith("Bearer ")) return null;
+    const decoded = await requireAuth(req);
+    return decoded?.uid || null;
+  } catch {
+    return null;
+  }
+}
+
 function toNumberOrUndefined(v) {
   if (v === undefined || v === null || v === "") return undefined;
   const n = Number(v);
@@ -37,6 +48,29 @@ function cleanImageList(arr) {
 
 export default async function handler(req, res) {
   try {
+
+
+
+    // -------------------------
+// GET /api/listings?public=listingComments&listingId=...
+// -------------------------
+if (req.method === "GET" && req.query?.public === "listingComments") {
+  const listingId = String(req.query?.listingId || "");
+  if (!listingId) return res.status(400).json({ message: "listingId is required" });
+
+  const comments = await prisma.listingComment.findMany({
+    where: { listingId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+    },
+  });
+
+  const commentCount = await prisma.listingComment.count({ where: { listingId } });
+
+  return res.status(200).json({ comments, commentCount });
+}
     // -------------------------
     // GET /api/listings (public)
     // -------------------------
@@ -68,18 +102,35 @@ export default async function handler(req, res) {
           : {}),
       };
 
-      const listings = await prisma.listing.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        include: {
-          seller: {
-            select: { id: true, email: true, username: true, isVerified: true, tier: true },
-          },
-          category: true,
-        },
-      });
+      const uid = await optionalAuthUid(req); // may be null (public)
 
-      return res.status(200).json({ listings });
+const listingsRaw = await prisma.listing.findMany({
+  where,
+  orderBy: { createdAt: "desc" },
+  include: {
+    seller: {
+      // IMPORTANT: don't leak email in public response
+      select: { id: true, username: true, isVerified: true, tier: true },
+    },
+    category: true,
+
+    _count: { select: { likes: true, comments: true } },
+
+    ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
+  },
+});
+
+const listings = listingsRaw.map((l) => {
+  const { _count, likes, ...rest } = l;
+  return {
+    ...rest,
+    likeCount: _count?.likes ?? 0,
+    commentCount: _count?.comments ?? 0,
+    likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
+  };
+});
+
+return res.status(200).json({ listings });
     }
 
     // --------------------------
@@ -90,6 +141,59 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const decoded = await requireAuth(req);
       const body = readJson(req);
+
+
+
+      // Intent: toggle like
+if (body.intent === "toggleListingLike") {
+  const listingId = String(body.listingId || "");
+  if (!listingId) return res.status(400).json({ message: "Missing listingId" });
+
+  const where = { listingId_userId: { listingId, userId: decoded.uid } };
+  const existing = await prisma.listingLike.findUnique({ where });
+
+  if (existing) await prisma.listingLike.delete({ where });
+  else await prisma.listingLike.create({ data: { listingId, userId: decoded.uid } });
+
+  const counts = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { _count: { select: { likes: true, comments: true } } },
+  });
+
+  return res.status(200).json({
+    liked: !existing,
+    likeCount: counts?._count?.likes ?? 0,
+    commentCount: counts?._count?.comments ?? 0,
+  });
+}
+
+// Intent: add comment
+if (body.intent === "addListingComment") {
+  const listingId = String(body.listingId || "");
+  const text = String(body.body || "").trim();
+
+  if (!listingId) return res.status(400).json({ message: "Missing listingId" });
+  if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+  if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+
+  const comment = await prisma.listingComment.create({
+    data: { listingId, authorId: decoded.uid, body: text },
+    include: {
+      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+    },
+  });
+
+  const counts = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { _count: { select: { likes: true, comments: true } } },
+  });
+
+  return res.status(201).json({
+    comment,
+    likeCount: counts?._count?.likes ?? 0,
+    commentCount: counts?._count?.comments ?? 0,
+  });
+}
 
       // Intent: Stripe checkout (kept within allowed endpoint list)
       if (body.intent === "checkout") {
