@@ -8,6 +8,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../components/
 import { feedService } from "../services/feed.service";
 import { useAuth } from "../context/AuthContext";
 import { Heart, MessageSquare, Share2, Send } from "lucide-react";
+import ShareSheet from "../components/shared/ShareSheet";
 
 // shadcn toast
 import { useToast } from "../hooks/use-toast";
@@ -255,14 +256,15 @@ export default function FeedPostDetails() {
                 <span className="font-medium">{post.commentCount ?? 0}</span>
               </button>
 
-              <button
-                type="button"
-                className="flex items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20"
-                onClick={onShare}
-              >
-                <Share2 className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">Share</span>
-              </button>
+              <ShareSheet url={shareUrl} title={post.title} text={(post.body || "").slice(0, 120)}>
+  <button
+    type="button"
+    className="flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20"
+  >
+    <Share2 className="h-4 w-4 text-muted-foreground" />
+    <span className="font-medium">Share</span>
+  </button>
+</ShareSheet>
             </div>
 
             {/* Body */}
