@@ -10,7 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import { Heart, MessageSquare, Share2, Send } from "lucide-react";
 
 // shadcn toast
-import { useToast } from "../components/ui/use-toast";
+import { useToast } from "../hooks/use-toast";
 import { ToastAction } from "../components/ui/toast";
 
 function AuthorHandle({ username }) {
