@@ -303,7 +303,7 @@ async function removeCommentConfirmed() {
 
         <Card className="border-border/60 bg-card/60 overflow-hidden">
           {post.image ? (
-         <div className="relative w-full overflow-hidden bg-muted aspect-[16/10] sm:aspect-[16/7]">
+         <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted aspect-[16/10] sm:aspect-[16/9]">
             <img
     src={post.image}
     alt=""
@@ -314,7 +314,7 @@ async function removeCommentConfirmed() {
     <img
     src={post.image}
     alt={post.title}
-    className="relative z-10 h-full w-full object-contain"
+    className="relative z-10 h-full w-full object-cover"
     loading="lazy"
   />
    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/10 via-transparent to-transparent" />
