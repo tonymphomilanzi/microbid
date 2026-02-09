@@ -212,6 +212,7 @@ export default function Feed() {
                   className="group overflow-hidden rounded-2xl border-border/60 bg-card/55 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5"
                 >
                   {/* Image */}
+                  <Link to={`/feed/${p.id}`} state={{ post: p }}>
                   <div className="relative aspect-[16/9] bg-muted">
                     {p.image ? (
                       <>
@@ -227,10 +228,11 @@ export default function Feed() {
                       <div className="h-full w-full bg-gradient-to-br from-muted/40 to-muted/10" />
                     )}
                   </div>
+                  </Link>
 
                   <CardContent className="p-4 sm:p-5 space-y-3">
                     <h2 className="text-base font-semibold leading-snug">
-                      <span className="line-clamp-2">{p.title}</span>
+                     <Link to={`/feed/${p.id}`} state={{ post: p }}><span className="line-clamp-2">{p.title}</span></Link>  
                     </h2>
 
                     {/* Like + comment counts */}
