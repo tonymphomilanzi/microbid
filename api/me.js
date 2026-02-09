@@ -262,6 +262,79 @@ if (req.method === "GET" && req.query?.public === "feed") {
     if (req.method === "POST") {
       const body = readJson(req);
 
+
+      const dbUserRole = await prisma.user.findUnique({
+            where: { id: decoded.uid },
+            select: { role: true },
+            });
+
+      const isAdmin = dbUserRole?.role === "ADMIN";
+
+
+
+
+
+
+if (body.intent === "editFeedComment") {
+  const commentId = String(body.commentId || "");
+  const text = String(body.body || "").trim();
+
+  if (!commentId) return res.status(400).json({ message: "commentId is required" });
+  if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+  if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+
+  const existing = await prisma.feedComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, authorId: true, postId: true },
+  });
+
+  if (!existing) return res.status(404).json({ message: "Comment not found" });
+  if (existing.authorId !== decoded.uid) return res.status(403).json({ message: "Not allowed" });
+
+  const comment = await prisma.feedComment.update({
+    where: { id: commentId },
+    data: { body: text },
+    include: {
+      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+    },
+  });
+
+  return res.status(200).json({ comment });
+}
+
+
+
+
+if (body.intent === "deleteFeedComment") {
+  const commentId = String(body.commentId || "");
+  if (!commentId) return res.status(400).json({ message: "commentId is required" });
+
+  const existing = await prisma.feedComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, authorId: true, postId: true },
+  });
+
+  if (!existing) return res.status(404).json({ message: "Comment not found" });
+
+  const canDelete = existing.authorId === decoded.uid || isAdmin;
+  if (!canDelete) return res.status(403).json({ message: "Not allowed" });
+
+  await prisma.feedComment.delete({ where: { id: commentId } });
+
+  const counts = await prisma.feedPost.findUnique({
+    where: { id: existing.postId },
+    select: { _count: { select: { likes: true, comments: true } } },
+  });
+
+  return res.status(200).json({
+    ok: true,
+    commentId,
+    postId: existing.postId,
+    likeCount: counts?._count?.likes ?? 0,
+    commentCount: counts?._count?.comments ?? 0,
+  });
+}
+
       if (body.intent === "toggleFeedLike") {
   const postId = String(body.postId || "");
   if (!postId) return res.status(400).json({ message: "postId is required" });

@@ -10,6 +10,9 @@ import { useAuth } from "../context/AuthContext";
 import { Heart, MessageSquare, Share2, Send } from "lucide-react";
 import ShareSheet from "../components/shared/ShareSheet";
 
+import { Pencil, Trash2, Save, X } from "lucide-react";
+import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
+
 // shadcn toast
 import { useToast } from "../hooks/use-toast";
 import { ToastAction } from "../components/ui/toast";
@@ -21,8 +24,11 @@ function AuthorHandle({ username }) {
 
 export default function FeedPostDetails() {
   const { id } = useParams();
-  const { user, openAuthModal } = useAuth();
+  const { user, openAuthModal,isAdmin } = useAuth();
   const { toast } = useToast();
+
+  const actionBtn =
+  "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
 
   const [loading, setLoading] = useState(true);
   const [post, setPost] = useState(null);
@@ -33,6 +39,16 @@ export default function FeedPostDetails() {
   const [commentLoading, setCommentLoading] = useState(false);
 
   const commentInputRef = useRef(null);
+
+
+
+const [editingId, setEditingId] = useState("");
+const [editingText, setEditingText] = useState("");
+const [editLoading, setEditLoading] = useState(false);
+
+const [deleteOpen, setDeleteOpen] = useState(false);
+const [deleteLoading, setDeleteLoading] = useState(false);
+const [commentToDelete, setCommentToDelete] = useState(null);
 
   const shareUrl = useMemo(() => {
     return `${window.location.origin}/feed/${id}`;
@@ -178,6 +194,80 @@ export default function FeedPostDetails() {
     }
   }
 
+  function startEdit(c) {
+  setEditingId(c.id);
+  setEditingText(c.body || "");
+}
+
+function cancelEdit() {
+  setEditingId("");
+  setEditingText("");
+}
+
+async function saveEdit() {
+  if (!user) return needLoginToast();
+  if (!editingId) return;
+
+  const text = editingText.trim();
+  if (!text) {
+    toast({ title: "Comment is empty", description: "Type something first." });
+    return;
+  }
+
+  setEditLoading(true);
+  try {
+    const res = await feedService.editComment(editingId, text);
+
+    setPost((p) =>
+      !p
+        ? p
+        : {
+            ...p,
+            comments: (p.comments ?? []).map((c) => (c.id === editingId ? res.comment : c)),
+          }
+    );
+
+    cancelEdit();
+  } catch (e) {
+    toast({
+      title: "Could not edit comment",
+      description: e?.response?.data?.message || e.message || "Try again.",
+    });
+  } finally {
+    setEditLoading(false);
+  }
+}
+
+async function removeCommentConfirmed() {
+  if (!user) return needLoginToast();
+  if (!commentToDelete?.id) return;
+
+  setDeleteLoading(true);
+  try {
+    const res = await feedService.deleteComment(commentToDelete.id);
+
+    setPost((p) => {
+      if (!p) return p;
+      return {
+        ...p,
+        likeCount: res.likeCount ?? p.likeCount,
+        commentCount: res.commentCount ?? p.commentCount,
+        comments: (p.comments ?? []).filter((c) => c.id !== commentToDelete.id),
+      };
+    });
+
+    setDeleteOpen(false);
+    setCommentToDelete(null);
+  } catch (e) {
+    toast({
+      title: "Could not delete comment",
+      description: e?.response?.data?.message || e.message || "Try again.",
+    });
+  } finally {
+    setDeleteLoading(false);
+  }
+}
+
   if (loading) {
     return (
       <PageContainer>
@@ -229,43 +319,42 @@ export default function FeedPostDetails() {
             </div>
 
             {/* Action bar (Like | Comment | Share) */}
-            <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
-              <button
-                type="button"
-                className="flex items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20"
-                onClick={onToggleLike}
-              >
-                <Heart
-                  className={[
-                    "h-4 w-4",
-                    post.likedByMe ? "fill-primary text-primary" : "text-muted-foreground",
-                  ].join(" ")}
-                />
-                <span className="font-medium">{post.likeCount ?? 0}</span>
-              </button>
 
-              <button
-                type="button"
-                className="flex items-center justify-center gap-2 border-x border-border/60 px-3 py-3 text-sm transition hover:bg-muted/20"
-                onClick={() => {
-                  // allow viewing comments even when logged out, but toast if trying to interact
-                  onOpenComments();
-                }}
-              >
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{post.commentCount ?? 0}</span>
-              </button>
 
-              <ShareSheet url={shareUrl} title={post.title} text={(post.body || "").slice(0, 120)}>
+<div className="grid grid-cols-3 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
+  {/* Like (left) */}
   <button
     type="button"
-    className="flex items-center justify-center gap-2 border-x border-border/60 px-3 py-3 text-sm transition hover:bg-muted/20"
+    className={actionBtn}
+    onClick={onToggleLike}
   >
-    <Share2 className="h-4 w-4 text-muted-foreground" />
-    <span className="font-medium">Share</span>
+    <Heart
+      className={[
+        "h-4 w-4",
+        post.likedByMe ? "fill-primary text-primary" : "text-muted-foreground",
+      ].join(" ")}
+    />
+    <span className="font-medium">{post.likeCount ?? 0}</span>
   </button>
-</ShareSheet>
-            </div>
+
+  {/* Comment (middle) */}
+  <button
+    type="button"
+    className={`${actionBtn} border-x border-border/60`}
+    onClick={onOpenComments}
+  >
+    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+    <span className="font-medium">{post.commentCount ?? 0}</span>
+  </button>
+
+  {/* Share (right) */}
+  <ShareSheet url={shareUrl} title={post.title} text={(post.body || "").slice(0, 120)}>
+    <button type="button" className={actionBtn}>
+      <Share2 className="h-4 w-4 text-muted-foreground" />
+      <span className="font-medium">Share</span>
+    </button>
+  </ShareSheet>
+</div>
 
             {/* Body */}
             <div className="whitespace-pre-wrap break-words text-sm text-muted-foreground leading-6">
@@ -294,22 +383,88 @@ export default function FeedPostDetails() {
                       No comments yet. Be the first.
                     </div>
                   ) : (
-                    (post.comments ?? []).map((c) => (
-                      <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm">
-                            <AuthorHandle username={c.author?.username} />
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
-                          </div>
-                        </div>
+                    
+                  (post.comments ?? []).map((c) => {
+  const isMine = Boolean(user && c.authorId === user.uid);
+  const canEdit = isMine;
+  const canDelete = isMine || Boolean(isAdmin);
 
-                        <div className="mt-2 whitespace-pre-wrap break-words text-sm text-muted-foreground">
-                          {c.body}
-                        </div>
-                      </div>
-                    ))
+  const isEditing = editingId === c.id;
+
+  return (
+    <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm">
+            <AuthorHandle username={c.author?.username} />
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
+          </div>
+        </div>
+
+        {(canEdit || canDelete) ? (
+          <div className="flex items-center gap-1">
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => (isEditing ? cancelEdit() : startEdit(c))}
+                disabled={editLoading}
+                title="Edit"
+              >
+                {isEditing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+              </Button>
+            ) : null}
+
+            {canDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setCommentToDelete(c);
+                  setDeleteOpen(true);
+                }}
+                disabled={deleteLoading}
+                title={isAdmin && !isMine ? "Admin delete" : "Delete"}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {isEditing ? (
+        <div className="mt-3 space-y-2">
+          <Textarea
+            value={editingText}
+            onChange={(e) => setEditingText(e.target.value)}
+            disabled={editLoading}
+            className="min-h-[80px]"
+          />
+          <div className="flex gap-2">
+            <Button onClick={saveEdit} disabled={editLoading} className="gap-2">
+              <Save className="h-4 w-4" />
+              {editLoading ? "Saving..." : "Save"}
+            </Button>
+            <Button variant="outline" onClick={cancelEdit} disabled={editLoading}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 whitespace-pre-wrap break-words text-sm text-muted-foreground">
+          {c.body}
+        </div>
+      )}
+    </div>
+  );
+})
+
+
                   )}
                 </div>
 
@@ -364,6 +519,19 @@ export default function FeedPostDetails() {
             </div>
           </DrawerContent>
         </Drawer>
+
+        <ConfirmDeleteDialog
+  open={deleteOpen}
+  onOpenChange={(o) => {
+    setDeleteOpen(o);
+    if (!o) setCommentToDelete(null);
+  }}
+  loading={deleteLoading}
+  title="Delete this comment?"
+  description="This action cannot be undone."
+  confirmText="Delete comment"
+  onConfirm={removeCommentConfirmed}
+/>
       </div>
     </PageContainer>
   );

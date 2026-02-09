@@ -21,4 +21,9 @@ export const feedService = {
 
   markSeen: () =>
     api.post("/me", { intent: "markFeedSeen" }).then((r) => r.data),
+  editComment: (commentId, body) =>
+  api.post("/me", { intent: "editFeedComment", commentId, body }).then((r) => r.data),
+
+deleteComment: (commentId) =>
+  api.post("/me", { intent: "deleteFeedComment", commentId }).then((r) => r.data),
 };
