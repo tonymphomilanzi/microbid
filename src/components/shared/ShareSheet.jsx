@@ -75,7 +75,7 @@ function ShareTile({ icon, label, onClick, href, colorClass = "" }) {
   return inner;
 }
 
-export default function ShareSheet({ url, title, text }) {
+export default function ShareSheet({ url, title, text, children }) {
   const [copied, setCopied] = useState(false);
 
   const shareText = useMemo(() => {
@@ -113,36 +113,33 @@ export default function ShareSheet({ url, title, text }) {
         // user canceled -> ignore
       }
     }
-    // fallback
     await copyLink();
   }
 
   async function instagramShare() {
-    // Instagram doesn't accept a direct URL-share into a post.
-    // Best experience is system share sheet (users pick Instagram).
     await systemShare();
-
-    // Optional fallback: open Instagram site after copy (not required)
-    // window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
   }
 
   return (
     <Sheet>
+      {/*  */}
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Share2 className="h-4 w-4" />
-          Share
-        </Button>
+        {children ? (
+          children
+        ) : (
+          <Button variant="outline" size="sm" className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Share
+          </Button>
+        )}
       </SheetTrigger>
 
-      {/* Bottom sheet like Instagram */}
       <SheetContent side="bottom" className="border-border/60 bg-card">
         <SheetHeader>
           <SheetTitle>Share</SheetTitle>
         </SheetHeader>
 
         <div className="mt-4 space-y-4">
-          {/* Quick preview */}
           <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
             <div className="text-sm font-medium truncate">{title}</div>
             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -151,7 +148,6 @@ export default function ShareSheet({ url, title, text }) {
             </div>
           </div>
 
-          {/* Grid of share targets */}
           <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
             <ShareTile
               icon={copied ? <Check className="h-6 w-6" /> : <Copy className="h-6 w-6" />}
@@ -159,67 +155,20 @@ export default function ShareSheet({ url, title, text }) {
               onClick={copyLink}
             />
 
-            <ShareTile
-              icon={<Share2 className="h-6 w-6" />}
-              label="More"
-              onClick={systemShare}
-            />
+            <ShareTile icon={<Share2 className="h-6 w-6" />} label="More" onClick={systemShare} />
 
-            <ShareTile
-              icon={<InstagramIcon className="h-6 w-6" />}
-              label="Instagram"
-              onClick={instagramShare}
-              colorClass="text-pink-300"
-            />
+            <ShareTile icon={<InstagramIcon className="h-6 w-6" />} label="Instagram" onClick={instagramShare} colorClass="text-pink-300" />
+            <ShareTile icon={<XIcon className="h-6 w-6" />} label="X" href={hrefX} />
 
-            <ShareTile
-              icon={<XIcon className="h-6 w-6" />}
-              label="X"
-              href={hrefX}
-            />
+            <ShareTile icon={<WhatsAppIcon className="h-6 w-6" />} label="WhatsApp" href={hrefWa} colorClass="text-emerald-300" />
+            <ShareTile icon={<TelegramIcon className="h-6 w-6" />} label="Telegram" href={hrefTg} colorClass="text-sky-300" />
 
-            <ShareTile
-              icon={<WhatsAppIcon className="h-6 w-6" />}
-              label="WhatsApp"
-              href={hrefWa}
-              colorClass="text-emerald-300"
-            />
+            <ShareTile icon={<span className="text-sm font-bold">f</span>} label="Facebook" href={hrefFb} colorClass="text-blue-300" />
+            <ShareTile icon={<span className="text-sm font-bold">in</span>} label="LinkedIn" href={hrefLi} colorClass="text-sky-300" />
+            <ShareTile icon={<span className="text-sm font-bold">r/</span>} label="Reddit" href={hrefReddit} colorClass="text-orange-300" />
 
-            <ShareTile
-              icon={<TelegramIcon className="h-6 w-6" />}
-              label="Telegram"
-              href={hrefTg}
-              colorClass="text-sky-300"
-            />
-
-            <ShareTile
-              icon={<span className="text-sm font-bold">f</span>}
-              label="Facebook"
-              href={hrefFb}
-              colorClass="text-blue-300"
-            />
-
-            <ShareTile
-              icon={<span className="text-sm font-bold">in</span>}
-              label="LinkedIn"
-              href={hrefLi}
-              colorClass="text-sky-300"
-            />
-
-            <ShareTile
-              icon={<span className="text-sm font-bold">r/</span>}
-              label="Reddit"
-              href={hrefReddit}
-              colorClass="text-orange-300"
-            />
-
-            <ShareTile
-              icon={<Mail className="h-6 w-6" />}
-              label="Email"
-              href={hrefMail}
-            />
+            <ShareTile icon={<Mail className="h-6 w-6" />} label="Email" href={hrefMail} />
           </div>
-
         </div>
       </SheetContent>
     </Sheet>
