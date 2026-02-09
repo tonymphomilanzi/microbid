@@ -19,7 +19,7 @@ import AdminCategories from "./pages/admin/AdminCategories";
 import Feed from "./pages/Feed";
 import AdminFeed from "./pages/admin/AdminFeed";
 import FeedPostDetails from "./pages/FeedPostDetails";
-
+import { Toaster } from "./components/ui/toaster";
 
 export default function App() {
   return (
@@ -71,7 +71,10 @@ export default function App() {
 <Route path="/pricing" element={<Pricing />} />
       </Routes>
 
+    
+
       <Footer />
+       <Toaster />
     </div>
   );
 }

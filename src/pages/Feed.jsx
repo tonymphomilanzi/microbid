@@ -6,14 +6,19 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
-import { ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
 import FeedPostSkeleton from "../components/feed/FeedPostSkeleton";
+import { Heart, MessageSquare, ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
 
+// shadcn toast (adjust path if yours differs)
+import { useToast } from "../components/ui/use-toast";
+import { ToastAction } from "../components/ui/toast";
 
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
 
 export default function Feed() {
-  const { user } = useAuth();
+  const { user, openAuthModal } = useAuth();
+  const { toast } = useToast();
+
   const [sp] = useSearchParams();
   const navigate = useNavigate();
 
@@ -58,11 +63,57 @@ export default function Feed() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.q, params.tag, params.category]);
 
-  // Mark as seen when opening feed
   useEffect(() => {
     if (!user) return;
     feedService.markSeen().catch(() => {});
   }, [user]);
+
+  function needLoginToast() {
+    toast({
+      title: "Login required",
+      description: "Please login to like or comment.",
+      action: (
+        <ToastAction altText="Login" onClick={openAuthModal}>
+          Login
+        </ToastAction>
+      ),
+    });
+  }
+
+  async function onToggleLike(postId) {
+    if (!user) return needLoginToast();
+
+    // optimistic update
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const liked = !p.likedByMe;
+        return {
+          ...p,
+          likedByMe: liked,
+          likeCount: Math.max(0, (p.likeCount || 0) + (liked ? 1 : -1)),
+        };
+      })
+    );
+
+    try {
+      const res = await feedService.toggleLike(postId);
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, likedByMe: res.liked, likeCount: res.likeCount, commentCount: res.commentCount }
+            : p
+        )
+      );
+    } catch (e) {
+      // revert by refetch (simplest + consistent)
+      load();
+      toast({
+        title: "Could not like post",
+        description: e?.response?.data?.message || e.message || "Try again.",
+      });
+    }
+  }
 
   return (
     <div className="relative overflow-hidden">
@@ -77,12 +128,7 @@ export default function Feed() {
         <div className="py-8 space-y-6">
           {/* Header */}
           <section className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Feed{" "}
-              <span className="bg-gradient-to-r from-primary to-yellow-400 bg-clip-text text-transparent">
-                updates
-              </span>
-            </h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Feed updates</h1>
             <p className="text-sm text-muted-foreground max-w-2xl">
               Updates, news and changelogs — posted by the Mikrobid team.
             </p>
@@ -147,20 +193,18 @@ export default function Feed() {
             </Card>
           ) : null}
 
-          {/* Posts (preview-only) */}
-       {loading ? (
-  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-    {Array.from({ length: 6 }).map((_, i) => (
-      <FeedPostSkeleton key={i} />
-    ))}
-  </div>
-) : posts.length === 0 ? (
-  <Card className="rounded-2xl border-border/60 bg-card/60">
-    <CardContent className="p-6 text-sm text-muted-foreground">
-      No posts yet.
-    </CardContent>
-  </Card>
-) : (
+          {/* Posts */}
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <FeedPostSkeleton key={i} />
+              ))}
+            </div>
+          ) : posts.length === 0 ? (
+            <Card className="rounded-2xl border-border/60 bg-card/60">
+              <CardContent className="p-6 text-sm text-muted-foreground">No posts yet.</CardContent>
+            </Card>
+          ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {posts.map((p) => (
                 <Card
@@ -171,14 +215,12 @@ export default function Feed() {
                   <div className="relative aspect-[16/9] bg-muted">
                     {p.image ? (
                       <>
-                      <Link to={`/feed/${p.id}`} state={{ post: p }}>
                         <img
                           src={p.image}
                           alt={p.title}
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                           loading="lazy"
                         />
-                        </Link>
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/55 via-transparent to-transparent opacity-70" />
                       </>
                     ) : (
@@ -186,16 +228,39 @@ export default function Feed() {
                     )}
                   </div>
 
-                  {/* Title + CTA */}
-                  <CardContent className="p-4 sm:p-5">
-                    <div className="space-y-3">
-                      <h2 className="text-base font-semibold leading-snug">
-                        <Link to={`/feed/${p.id}`} state={{ post: p }}>
-                        <span className="line-clamp-2">{p.title}</span>
-                        </Link>
-                      </h2>
+                  <CardContent className="p-4 sm:p-5 space-y-3">
+                    <h2 className="text-base font-semibold leading-snug">
+                      <span className="line-clamp-2">{p.title}</span>
+                    </h2>
 
-                      <Button asChild variant="outline" className="w-full gap-2">
+                    {/* Like + comment counts */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => onToggleLike(p.id)}
+                        >
+                          <Heart
+                            className={[
+                              "h-4 w-4",
+                              p.likedByMe ? "fill-primary text-primary" : "text-muted-foreground",
+                            ].join(" ")}
+                          />
+                          <span className="text-sm">{p.likeCount ?? 0}</span>
+                        </Button>
+
+                        <Button asChild variant="outline" size="sm" className="gap-2">
+                          <Link to={`/feed/${p.id}`} state={{ post: p, focusComment: true }}>
+                            <MessageSquare className="h-4 w-4" />
+                            <span className="text-sm">{p.commentCount ?? 0}</span>
+                          </Link>
+                        </Button>
+                      </div>
+
+                      <Button asChild variant="default" size="sm" className="gap-2">
                         <Link to={`/feed/${p.id}`} state={{ post: p }}>
                           See more <ArrowRight className="h-4 w-4" />
                         </Link>

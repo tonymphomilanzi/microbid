@@ -51,6 +51,9 @@ model User {
 
   lastFeedSeenAt DateTime?
   feedPosts       FeedPost[]
+
+  feedLikes     FeedPostLike[]
+  feedComments  FeedComment[]
 }
 
 
@@ -64,6 +67,10 @@ model FeedPost {
 
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
+
+  // NEW
+  likes     FeedPostLike[]
+  comments  FeedComment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -390,4 +397,39 @@ model Platform {
   order     Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+//feed comment like
+model FeedPostLike {
+  id        String   @id @default(cuid())
+
+  postId    String
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model FeedComment {
+  id        String   @id @default(cuid())
+
+  postId    String
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  body      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId, createdAt])
+  @@index([authorId])
 }

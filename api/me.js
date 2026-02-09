@@ -93,6 +93,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ available, normalized, suggestions });
     }
 
+
+    async function optionalAuthUid(req) {
+  try {
+    const header = req.headers.authorization || "";
+    if (!header.startsWith("Bearer ")) return null;
+    const decoded = await requireAuth(req);
+    return decoded?.uid || null;
+  } catch {
+    return null;
+  }
+}
+
     // -------------------------
     // PUBLIC: plans list
     // GET /api/me?public=plans
@@ -110,36 +122,71 @@ export default async function handler(req, res) {
     // GET /api/me?public=feed
     // optional: &id=... &q=... &tag=... &category=...
     // -------------------------
-    if (req.method === "GET" && req.query?.public === "feed") {
-      const id = String(req.query?.id || "");
-      const q = String(req.query?.q || "");
-      const tag = String(req.query?.tag || "").toUpperCase(); // NEW | UPDATE | CHANGELOG
-      const category = String(req.query?.category || "");
+ // -------------------------
+// PUBLIC: feed list OR single post
+// GET /api/me?public=feed
+// optional: &id=... &q=... &tag=... &category=...
+// -------------------------
+if (req.method === "GET" && req.query?.public === "feed") {
+  const id = String(req.query?.id || "");
+  const q = String(req.query?.q || "");
+  const tag = String(req.query?.tag || "").toUpperCase(); // NEW | UPDATE | CHANGELOG
+  const category = String(req.query?.category || "");
 
-      const posts = await prisma.feedPost.findMany({
-        where: {
-          ...(id ? { id } : {}),
-          ...(q
-            ? {
-                OR: [
-                  { title: { contains: q, mode: "insensitive" } },
-                  { body: { contains: q, mode: "insensitive" } },
-                  { category: { contains: q, mode: "insensitive" } },
-                ],
-              }
-            : {}),
-          ...(tag ? { tags: { has: tag } } : {}),
-          ...(category ? { category } : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        take: id ? 1 : 50,
-        include: {
-          author: { select: { id: true, username: true, isVerified: true, tier: true } },
-        },
-      });
+  const uid = await optionalAuthUid(req); // may be null
 
-      return res.status(200).json({ posts });
-    }
+  const postsRaw = await prisma.feedPost.findMany({
+    where: {
+      ...(id ? { id } : {}),
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q, mode: "insensitive" } },
+              { body: { contains: q, mode: "insensitive" } },
+              { category: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+      ...(tag ? { tags: { has: tag } } : {}),
+      ...(category ? { category } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: id ? 1 : 50,
+    include: {
+      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+
+      _count: { select: { likes: true, comments: true } },
+
+      ...(uid
+        ? { likes: { where: { userId: uid }, select: { id: true } } }
+        : {}),
+
+      ...(id
+        ? {
+            comments: {
+              orderBy: { createdAt: "desc" },
+              take: 50,
+              include: {
+                author: { select: { id: true, username: true, isVerified: true, tier: true } },
+              },
+            },
+          }
+        : {}),
+    },
+  });
+
+  const posts = postsRaw.map((p) => {
+    const { _count, likes, ...rest } = p;
+    return {
+      ...rest,
+      likeCount: _count?.likes ?? 0,
+      commentCount: _count?.comments ?? 0,
+      likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
+    };
+  });
+
+  return res.status(200).json({ posts });
+}
 
     // -------------------------
     // Everything else requires auth
@@ -214,6 +261,60 @@ export default async function handler(req, res) {
     // -------------------------
     if (req.method === "POST") {
       const body = readJson(req);
+
+      if (body.intent === "toggleFeedLike") {
+  const postId = String(body.postId || "");
+  if (!postId) return res.status(400).json({ message: "postId is required" });
+
+  const where = { postId_userId: { postId, userId: decoded.uid } };
+  const existing = await prisma.feedPostLike.findUnique({ where });
+
+  if (existing) {
+    await prisma.feedPostLike.delete({ where });
+  } else {
+    await prisma.feedPostLike.create({ data: { postId, userId: decoded.uid } });
+  }
+
+  const counts = await prisma.feedPost.findUnique({
+    where: { id: postId },
+    select: { _count: { select: { likes: true, comments: true } } },
+  });
+
+  return res.status(200).json({
+    liked: !existing,
+    likeCount: counts?._count?.likes ?? 0,
+    commentCount: counts?._count?.comments ?? 0,
+  });
+}
+
+
+
+if (body.intent === "addFeedComment") {
+  const postId = String(body.postId || "");
+  const text = String(body.body || "").trim();
+
+  if (!postId) return res.status(400).json({ message: "postId is required" });
+  if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+  if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+
+  const comment = await prisma.feedComment.create({
+    data: { postId, authorId: decoded.uid, body: text },
+    include: {
+      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+    },
+  });
+
+  const counts = await prisma.feedPost.findUnique({
+    where: { id: postId },
+    select: { _count: { select: { likes: true, comments: true } } },
+  });
+
+  return res.status(201).json({
+    comment,
+    likeCount: counts?._count?.likes ?? 0,
+    commentCount: counts?._count?.comments ?? 0,
+  });
+}
 
       // mark feed seen
       if (body.intent === "markFeedSeen") {
