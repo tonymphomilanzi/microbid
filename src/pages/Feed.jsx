@@ -213,7 +213,7 @@ export default function Feed() {
                 >
                   {/* Image */}
                   <Link to={`/feed/${p.id}`} state={{ post: p }}>
-                  <div className="relative w-full overflow-hidden bg-muted aspect-[16/10] sm:aspect-[16/7]">
+                  <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted aspe">
                     {p.image ? (
                       <>
                         <img
