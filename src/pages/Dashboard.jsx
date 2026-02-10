@@ -7,22 +7,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Badge } from "../components/ui/badge";
 import { listingsService } from "../services/listings.service";
 import AvatarSetupDialog from "../components/forms/AvatarSetupDialog";
+import UsernameSetupDialog from "../components/forms/UsernameSetupDialog";
+import ChatDialog from "../components/chat/ChatDialog";
+import { chatService } from "../services/chat.service";
+import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
+import { useAuth } from "../context/AuthContext";
+
 import {
   PlusCircle,
   Trash2,
   Pencil,
   Power,
   BarChart3,
-  MessageCircle,LogOut 
+  MessageCircle,
+  LogOut,
+  Settings,
 } from "lucide-react";
-
-
-import ChatDialog from "../components/chat/ChatDialog";
-import { chatService } from "../services/chat.service";
-import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
-import { useAuth } from "../context/AuthContext";
-import UsernameSetupDialog from "../components/forms/UsernameSetupDialog";
-
 
 function StatusBadge({ status }) {
   const map = {
@@ -38,53 +38,60 @@ function StatusBadge({ status }) {
 }
 
 export default function Dashboard() {
+  const { isAdmin, refreshMe, logout } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-const { isAdmin, refreshMe, logout } = useAuth();
-  
-
-//avatar////////////////////////////////////////
-const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
-
-useEffect(() => {
-  if (tabParam === "avatar") setAvatarDialogOpen(true);
-}, [tabParam]);
-/////////////////////////////////////////////////
-
   // Plans (from /api/me)
-const [plans, setPlans] = useState([]);
-const [currentPlan, setCurrentPlan] = useState(null);
-const [usage, setUsage] = useState(null);
-const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
-////////////////////////////////////
-  //
+  const [plans, setPlans] = useState([]);
+  const [currentPlan, setCurrentPlan] = useState(null);
+  const [usage, setUsage] = useState(null);
+  const [pendingUpgradeRequest, setPendingUpgradeRequest] = useState(null);
+
+  // URL params
   const [sp, setSp] = useSearchParams();
 
-const tabParam = sp.get("tab") || "";
+  // Backward compatibility:
+  // old links used ?tab=avatar or ?tab=settings
+  const rawTab = sp.get("tab") || "";
+  const rawModal = sp.get("modal") || "";
 
-const activeTab = useMemo(() => {
-  const allowed = new Set(["listings", "inbox", "purchases", "sales"]);
-  return allowed.has(tabParam) ? tabParam : "listings";
-}, [tabParam]);
+  const tabParam = rawTab === "avatar" ? "settings" : rawTab;
+  const modalParam = rawTab === "avatar" ? "avatar" : rawModal;
 
-function setTab(next) {
-  const nextSp = new URLSearchParams(sp);
+  const activeTab = useMemo(() => {
+    const allowed = new Set(["listings", "inbox", "purchases", "sales", "settings"]);
+    return allowed.has(tabParam) ? tabParam : "listings";
+  }, [tabParam]);
 
-  // optional: keep URL clean by removing tab when on default tab
-  if (!next || next === "listings") nextSp.delete("tab");
-  else nextSp.set("tab", next);
+  const usernameDialogOpen = activeTab === "settings" && modalParam === "username";
+  const avatarDialogOpen = activeTab === "settings" && modalParam === "avatar";
 
-  setSp(nextSp, { replace: true });
-}
-  //username states
-  const [usernameDialogOpen, setUsernameDialogOpen] = useState(false);
+  function setTab(next) {
+    const nextSp = new URLSearchParams(sp);
+    nextSp.delete("modal"); // always close modal when switching tabs
 
- useEffect(() => {
-  if (tabParam === "settings") setUsernameDialogOpen(true);
-}, [tabParam]);
+    if (!next || next === "listings") nextSp.delete("tab");
+    else nextSp.set("tab", next);
 
+    setSp(nextSp, { replace: true });
+  }
+
+  function openSettingsModal(which) {
+    const nextSp = new URLSearchParams(sp);
+    nextSp.set("tab", "settings");
+    nextSp.set("modal", which); // "username" | "avatar"
+    setSp(nextSp, { replace: true });
+  }
+
+  function closeSettingsModal() {
+    const nextSp = new URLSearchParams(sp);
+    nextSp.delete("modal");
+    nextSp.set("tab", "settings");
+    setSp(nextSp, { replace: true });
+  }
 
   // Inbox
   const [convosLoading, setConvosLoading] = useState(true);
@@ -92,7 +99,8 @@ function setTab(next) {
   const [conversations, setConversations] = useState([]);
   const [activeConvoId, setActiveConvoId] = useState("");
   const [inboxOpen, setInboxOpen] = useState(false);
-  //delete state
+
+  // delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [listingToDelete, setListingToDelete] = useState(null);
@@ -110,40 +118,32 @@ function setTab(next) {
     }
   }
 
-
   async function refresh() {
-  setError("");
-  setLoading(true);
-  try {
-    const res = await listingsService.me();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await listingsService.me();
 
-    // backwards-safe destructuring
-    const user = res.user || res.user?.user || res.user; // just in case
-    const plans = res.plans || [];
-    const currentPlan = res.currentPlan || null;
-    const usage = res.usage || null;
-    const pendingUpgradeRequest = res.pendingUpgradeRequest || null;
+      const user = res.user || res.user?.user || res.user;
+      setMe(user);
 
-    setMe(user);
-    setPlans(plans);
-    setCurrentPlan(currentPlan);
-    setUsage(usage);
-    setPendingUpgradeRequest(pendingUpgradeRequest);
+      setPlans(res.plans || []);
+      setCurrentPlan(res.currentPlan || null);
+      setUsage(res.usage || null);
+      setPendingUpgradeRequest(res.pendingUpgradeRequest || null);
 
-    await loadInbox();
-  } catch (e) {
-    setError(e?.response?.data?.message || e.message || "Failed to load dashboard");
-  } finally {
-    setLoading(false);
+      await loadInbox();
+    } catch (e) {
+      setError(e?.response?.data?.message || e.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-
-
 
   const summary = useMemo(() => {
     const listings = me?.listings ?? [];
@@ -161,19 +161,19 @@ function setTab(next) {
     };
   }, [me]);
 
- async function removeListingConfirmed() {
-  if (!listingToDelete?.id) return;
+  async function removeListingConfirmed() {
+    if (!listingToDelete?.id) return;
 
-  setDeleteLoading(true);
-  try {
-    await listingsService.deleteListing(listingToDelete.id);
-    setDeleteOpen(false);
-    setListingToDelete(null);
-    await refresh();
-  } finally {
-    setDeleteLoading(false);
+    setDeleteLoading(true);
+    try {
+      await listingsService.deleteListing(listingToDelete.id);
+      setDeleteOpen(false);
+      setListingToDelete(null);
+      await refresh();
+    } finally {
+      setDeleteLoading(false);
+    }
   }
-}
 
   async function toggleActive(listing) {
     await listingsService.upsertListing({
@@ -189,7 +189,7 @@ function setTab(next) {
     refresh();
   }
 
- 
+  const defaultAvatar = "/avatar-default.png";
 
   return (
     <PageContainer>
@@ -197,12 +197,12 @@ function setTab(next) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
-           <p className="text-sm text-muted-foreground">
-  {me?.username ? `@${me.username}` : "Username not set"}
-</p>
+            <p className="text-sm text-muted-foreground">
+              {me?.username ? `@${me.username}` : "Username not set"}
+            </p>
           </div>
-         
-          <div className="fl ex gap-2">
+
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={refresh}>
               Refresh
             </Button>
@@ -213,85 +213,80 @@ function setTab(next) {
                 Create Listing
               </Link>
             </Button>
-             {isAdmin && (
-    <Button asChild variant="outline">
-      <Link to="/admin">Admin Panel</Link>
-    </Button>
-  )}
-<Button variant="outline" className="gap-2" onClick={logout}>
-  <LogOut className="h-4 w-4" />
-  Logout
-</Button>
+
+            {isAdmin ? (
+              <Button asChild variant="outline">
+                <Link to="/admin">Admin Panel</Link>
+              </Button>
+            ) : null}
+
+            <Button variant="outline" className="gap-2" onClick={logout}>
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
           </div>
         </div>
 
-
-         {me && !me.username ? (
-  <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
-    <div className="text-sm font-semibold">Set your username</div>
-    <div className="mt-1 text-sm text-muted-foreground">
-      Your email is private. Choose a unique username to show publicly on your listings.
-    </div>
-    <div className="mt-3">
-     <Button onClick={() => setSp({ tab: "settings" }, { replace: true })}>
-  Set username
-</Button>
-    </div>
-  </div>
-) : null}
-
-{me && !me.avatarUrl ? (
-  <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
-    <div className="text-sm font-semibold">Set your avatar</div>
-    <div className="mt-1 text-sm text-muted-foreground">
-      Add a profile image.
-    </div>
-    <div className="mt-3">
-      <Button onClick={() => setSp({ tab: "avatar" }, { replace: true })}>
-        Set avatar
-      </Button>
-    </div>
-  </div>
-) : null}
-
-
-
-{currentPlan ? (
-  <div className="rounded-xl border border-border/60 bg-card/60 p-4">
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <div className="text-sm font-semibold">
-          Current plan: {currentPlan.name} • {currentPlan.billingType}
-        </div>
-
-        <div className="mt-1 text-sm text-muted-foreground">
-          Listings/month: {currentPlan.features?.listingsPerMonth ?? "—"} • Conversations/month:{" "}
-          {currentPlan.features?.conversationsPerMonth ?? "—"}
-        </div>
-
-        {usage ? (
-          <div className="mt-1 text-xs text-muted-foreground">
-            This month usage: listings {usage.listingsCreated ?? 0} /{" "}
-            {currentPlan.features?.listingsPerMonth ?? "—"} • conversations{" "}
-            {usage.conversationsStarted ?? 0} /{" "}
-            {currentPlan.features?.conversationsPerMonth ?? "—"}
+        {/* Missing username banner */}
+        {me && !me.username ? (
+          <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
+            <div className="text-sm font-semibold">Set your username</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Your email is private. Choose a unique username to show publicly on your listings.
+            </div>
+            <div className="mt-3">
+              <Button onClick={() => openSettingsModal("username")}>Set username</Button>
+            </div>
           </div>
         ) : null}
 
-        {pendingUpgradeRequest ? (
-          <div className="mt-2 text-xs text-primary">
-            Upgrade request pending: {pendingUpgradeRequest.requestedPlan}
+        {/* Missing avatar banner */}
+        {me && !me.avatarUrl ? (
+          <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
+            <div className="text-sm font-semibold">Set your avatar</div>
+            <div className="mt-1 text-sm text-muted-foreground">Add a profile image.</div>
+            <div className="mt-3">
+              <Button onClick={() => openSettingsModal("avatar")}>Set avatar</Button>
+            </div>
           </div>
         ) : null}
-      </div>
 
-      <Button asChild variant="outline">
-        <Link to="/pricing">Upgrade</Link>
-      </Button>
-    </div>
-  </div>
-) : null}
+        {/* Plan */}
+        {currentPlan ? (
+          <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold">
+                  Current plan: {currentPlan.name} • {currentPlan.billingType}
+                </div>
 
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Listings/month: {currentPlan.features?.listingsPerMonth ?? "—"} • Conversations/month:{" "}
+                  {currentPlan.features?.conversationsPerMonth ?? "—"}
+                </div>
+
+                {usage ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    This month usage: listings {usage.listingsCreated ?? 0} /{" "}
+                    {currentPlan.features?.listingsPerMonth ?? "—"} • conversations{" "}
+                    {usage.conversationsStarted ?? 0} /{" "}
+                    {currentPlan.features?.conversationsPerMonth ?? "—"}
+                  </div>
+                ) : null}
+
+                {pendingUpgradeRequest ? (
+                  <div className="mt-2 text-xs text-primary">
+                    Upgrade request pending: {pendingUpgradeRequest.requestedPlan}
+                  </div>
+                ) : null}
+              </div>
+
+              <Button asChild variant="outline">
+                <Link to="/pricing">Upgrade</Link>
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <Card className="border-border/60 bg-card/60">
@@ -324,21 +319,63 @@ function setTab(next) {
           ))}
         </div>
 
-       <Tabs value={activeTab} onValueChange={setTab}>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="listings">My Listings</TabsTrigger>
+
             <TabsTrigger value="inbox" className="gap-2">
-  <MessageCircle className="h-4 w-4" />
-  Inbox
-  {conversations?.some((c) => c.unreadCount > 0) ? (
-    <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-      {conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
-    </span>
-  ) : null}
-</TabsTrigger>
+              <MessageCircle className="h-4 w-4" />
+              Inbox
+              {conversations?.some((c) => c.unreadCount > 0) ? (
+                <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                  {conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
+                </span>
+              ) : null}
+            </TabsTrigger>
+
             <TabsTrigger value="purchases">Purchases</TabsTrigger>
             <TabsTrigger value="sales">Sales</TabsTrigger>
+
+            <TabsTrigger value="settings" className="gap-2">
+              <Settings className="h-4 w-4" />
+              Settings
+            </TabsTrigger>
           </TabsList>
+
+          {/* SETTINGS */}
+          <TabsContent value="settings" className="mt-4 space-y-3">
+            <Card className="border-border/60 bg-card/60">
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 overflow-hidden rounded-full border border-border/60 bg-muted/20">
+                    <img
+                      src={me?.avatarUrl || defaultAvatar}
+                      alt="Avatar"
+                      className="h-full w-full object-cover"
+                      onError={(e) => (e.currentTarget.src = defaultAvatar)}
+                    />
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold">Profile</div>
+                    <div className="text-sm text-muted-foreground truncate">
+                      {me?.username ? `@${me.username}` : "Username not set"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" onClick={() => openSettingsModal("avatar")}>
+                    Change avatar
+                  </Button>
+                  <Button variant="outline" onClick={() => openSettingsModal("username")}>
+                    Change username
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* LISTINGS */}
           <TabsContent value="listings" className="mt-4 space-y-3">
@@ -409,19 +446,17 @@ function setTab(next) {
                               </Link>
                             </Button>
 
-                         <Button
-  variant="destructive"
-  size="sm"
-  className="gap-2"
-  onClick={() => {
-    setListingToDelete(l);
-    setDeleteOpen(true);
-  }}
-     
->
-  {/*added trash icon*/}
- <Trash2 className="h-4 w-4" />
-</Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => {
+                                setListingToDelete(l);
+                                setDeleteOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
 
                             <Button variant="secondary" size="sm" className="gap-2" asChild>
                               <Link to={`/listings/${l.id}`}>
@@ -441,128 +476,128 @@ function setTab(next) {
 
           {/* INBOX */}
           <TabsContent value="inbox" className="mt-4 space-y-3">
-  {inboxError ? (
-    <Card className="border-border/60 bg-card/60">
-      <CardContent className="p-5">
-        <div className="text-sm font-medium">Could not load inbox</div>
-        <div className="mt-1 text-sm text-muted-foreground">{inboxError}</div>
-        <div className="mt-4">
-          <Button variant="outline" onClick={loadInbox}>Retry inbox</Button>
-        </div>
-      </CardContent>
-    </Card>
-  ) : null}
-
-  {convosLoading ? (
-    <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading inbox…</CardContent></Card>
-  ) : !conversations.length ? (
-    <Card><CardContent className="p-6 text-sm text-muted-foreground">No conversations yet.</CardContent></Card>
-  ) : (
-    <div className="grid gap-2">
-      {conversations.map((c) => {
-        const lastText = c.messages?.[0]?.text ?? "No messages yet";
-        const otherUser = c.buyerId === me?.id ? c.seller : c.buyer;
-const otherUsername = otherUser?.username || "";
-
-const displayName = otherUsername ? `@${otherUsername}` : "@private_user";
-const initials = otherUsername ? otherUsername.slice(0, 2).toUpperCase() : "U";
-        
-        const unread = (c.unreadCount || 0) > 0;
-
-        const ts = c.lastMessageAt || c.updatedAt;
-        const timeLabel = ts ? new Date(ts).toLocaleString() : "";
-
-        return (
-          <button
-            key={c.id}
-            onClick={() => {
-              setActiveConvoId(c.id);
-              setInboxOpen(true);
-            }}
-            className={[
-              "w-full text-left rounded-xl border p-3 transition",
-              "border-border/60 bg-card/60 hover:bg-muted/20",
-              unread ? "ring-1 ring-primary/30 bg-primary/5" : "",
-            ].join(" ")}
-          >
-            <div className="flex items-center gap-3">
-              {/* Avatar */}
-              <div
-                className={[
-                  "h-10 w-10 shrink-0 rounded-full grid place-items-center border text-sm font-semibold",
-                  unread
-                    ? "border-primary/30 bg-primary/15 text-primary"
-                    : "border-border/60 bg-muted/20 text-muted-foreground",
-                ].join(" ")}
-              >
-                {initials || "U"}
-              </div>
-
-              {/* Main */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
-                    <span className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
-  {otherUsername ? `@${otherUsername}` : (
-    <span className="select-none blur-[3px]">@private_user</span>
-  )}
-</span>
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <Badge variant="outline" className="border-border/60 bg-muted/20">
-                        {c.listing?.platform}
-                      </Badge>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {c.listing?.title}
-                      </span>
-                    </div>
+            {inboxError ? (
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="p-5">
+                  <div className="text-sm font-medium">Could not load inbox</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{inboxError}</div>
+                  <div className="mt-4">
+                    <Button variant="outline" onClick={loadInbox}>
+                      Retry inbox
+                    </Button>
                   </div>
+                </CardContent>
+              </Card>
+            ) : null}
 
-                  <div className="shrink-0 text-xs text-muted-foreground">
-                    {timeLabel}
-                  </div>
-                </div>
+            {convosLoading ? (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">Loading inbox…</CardContent>
+              </Card>
+            ) : !conversations.length ? (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">No conversations yet.</CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-2">
+                {conversations.map((c) => {
+                  const lastText = c.messages?.[0]?.text ?? "No messages yet";
+                  const otherUser = c.buyerId === me?.id ? c.seller : c.buyer;
+                  const otherUsername = otherUser?.username || "";
 
-                <div className={["mt-2 truncate text-sm", unread ? "text-foreground" : "text-muted-foreground"].join(" ")}>
-                  {lastText}
-                </div>
+                  const initials = otherUsername ? otherUsername.slice(0, 2).toUpperCase() : "U";
+                  const unread = (c.unreadCount || 0) > 0;
+
+                  const ts = c.lastMessageAt || c.updatedAt;
+                  const timeLabel = ts ? new Date(ts).toLocaleString() : "";
+
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setActiveConvoId(c.id);
+                        setInboxOpen(true);
+                      }}
+                      className={[
+                        "w-full text-left rounded-xl border p-3 transition",
+                        "border-border/60 bg-card/60 hover:bg-muted/20",
+                        unread ? "ring-1 ring-primary/30 bg-primary/5" : "",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Avatar (still initials for now) */}
+                        <div
+                          className={[
+                            "h-10 w-10 shrink-0 rounded-full grid place-items-center border text-sm font-semibold",
+                            unread
+                              ? "border-primary/30 bg-primary/15 text-primary"
+                              : "border-border/60 bg-muted/20 text-muted-foreground",
+                          ].join(" ")}
+                        >
+                          {initials}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
+                                {otherUsername ? (
+                                  `@${otherUsername}`
+                                ) : (
+                                  <span className="select-none blur-[3px]">@private_user</span>
+                                )}
+                              </div>
+
+                              <div className="mt-0.5 flex items-center gap-2">
+                                <Badge variant="outline" className="border-border/60 bg-muted/20">
+                                  {c.listing?.platform}
+                                </Badge>
+                                <span className="truncate text-xs text-muted-foreground">
+                                  {c.listing?.title}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 text-xs text-muted-foreground">{timeLabel}</div>
+                          </div>
+
+                          <div className={["mt-2 truncate text-sm", unread ? "text-foreground" : "text-muted-foreground"].join(" ")}>
+                            {lastText}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {unread ? (
+                            <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                              {c.unreadCount}
+                            </span>
+                          ) : null}
+
+                          {c.listing?.image ? (
+                            <img
+                              src={c.listing.image}
+                              alt="Listing"
+                              className="h-10 w-14 rounded-md object-cover border border-border/60"
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+            )}
 
-              {/* Listing thumb + unread badge */}
-              <div className="flex items-center gap-2">
-                {unread ? (
-                  <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                    {c.unreadCount}
-                  </span>
-                ) : null}
-
-                {c.listing?.image ? (
-                  <img
-                    src={c.listing.image}
-                    alt="Listing"
-                    className="h-10 w-14 rounded-md object-cover border border-border/60"
-                  />
-                ) : null}
-              </div>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  )}
-
-  <ChatDialog
-    open={inboxOpen}
-    onOpenChange={(o) => {
-      setInboxOpen(o);
-      // when closing chat, refresh inbox so unread counts update immediately
-      if (!o) loadInbox();
-    }}
-    currentUser={me ? { uid: me.id } : null}
-    conversationId={activeConvoId || undefined}
-  />
-</TabsContent>
+            <ChatDialog
+              open={inboxOpen}
+              onOpenChange={(o) => {
+                setInboxOpen(o);
+                if (!o) loadInbox();
+              }}
+              currentUser={me ? { uid: me.id } : null}
+              conversationId={activeConvoId || undefined}
+            />
+          </TabsContent>
 
           {/* PURCHASES */}
           <TabsContent value="purchases" className="mt-4 space-y-3">
@@ -616,56 +651,51 @@ const initials = otherUsername ? otherUsername.slice(0, 2).toUpperCase() : "U";
             )}
           </TabsContent>
         </Tabs>
+
+        <ConfirmDeleteDialog
+          open={deleteOpen}
+          onOpenChange={(o) => {
+            setDeleteOpen(o);
+            if (!o) setListingToDelete(null);
+          }}
+          loading={deleteLoading}
+          title="Delete this listing?"
+          description={
+            listingToDelete
+              ? `You're about to delete "${listingToDelete.title}". This cannot be undone.`
+              : "This action cannot be undone."
+          }
+          confirmText="Delete listing"
+          onConfirm={removeListingConfirmed}
+        />
+
+        {/* Dialogs controlled by URL */}
+        <UsernameSetupDialog
+          open={usernameDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) closeSettingsModal();
+          }}
+          initialUsername={me?.username || ""}
+          onSaved={async (newUsername) => {
+            await refreshMe?.();
+            setMe((prev) => (prev ? { ...prev, username: newUsername } : prev));
+            closeSettingsModal();
+          }}
+        />
+
+        <AvatarSetupDialog
+          open={avatarDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) closeSettingsModal();
+          }}
+          initialAvatarUrl={me?.avatarUrl || ""}
+          onSaved={async (newUrl) => {
+            await refreshMe?.();
+            setMe((prev) => (prev ? { ...prev, avatarUrl: newUrl } : prev));
+            closeSettingsModal();
+          }}
+        />
       </div>
-
-      <ConfirmDeleteDialog
-  open={deleteOpen}
-  onOpenChange={(o) => {
-    setDeleteOpen(o);
-    if (!o) setListingToDelete(null);
-  }}
-  loading={deleteLoading}
-  title="Delete this listing?"
-  description={
-    listingToDelete
-      ? `You're about to delete "${listingToDelete.title}". This cannot be undone.`
-      : "This action cannot be undone."
-  }
-  confirmText="Delete listing"
-  onConfirm={removeListingConfirmed}
-/>
-
-
-<UsernameSetupDialog
-  open={usernameDialogOpen}
-  onOpenChange={(open) => {
-    setUsernameDialogOpen(open);
-    if (!open) setSp({}, { replace: true }); // clears ?tab=settings
-  }}
-  initialUsername={me?.username || ""}
-  onSaved={async (newUsername) => {
-    await refreshMe?.();
-    setMe((prev) => (prev ? { ...prev, username: newUsername } : prev));
-    setSp({}, { replace: true });
-  }}
-/>
-
-
-<AvatarSetupDialog
-  open={avatarDialogOpen}
-  onOpenChange={(open) => {
-    setAvatarDialogOpen(open);
-    if (!open) setSp({}, { replace: true }); // clears ?tab=avatar
-  }}
-  initialAvatarUrl={me?.avatarUrl || ""}
-  onSaved={async (newUrl) => {
-    await refreshMe?.();
-    setMe((prev) => (prev ? { ...prev, avatarUrl: newUrl } : prev));
-    setSp({}, { replace: true });
-  }}
-/>
-
-
     </PageContainer>
   );
 }
