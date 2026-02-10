@@ -63,7 +63,7 @@ if (req.method === "GET" && req.query?.public === "listingComments") {
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {
-      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      author: { select: { id: true, username: true,avatarUrl: true, isVerified: true, tier: true } },
     },
   });
 
@@ -178,7 +178,7 @@ if (body.intent === "addListingComment") {
   const comment = await prisma.listingComment.create({
     data: { listingId, authorId: decoded.uid, body: text },
     include: {
-      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      author: { select: { id: true, username: true,avatarUrl: true, isVerified: true, tier: true } },
     },
   });
 

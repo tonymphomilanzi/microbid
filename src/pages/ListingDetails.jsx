@@ -298,14 +298,19 @@ export default function ListingDetails() {
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Seller</div>
                   <div className="mt-1 flex items-center gap-2 min-w-0">
-                    <SellerHandle username={username} />
-                    {verified ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
-                        <BadgeCheck className="h-4 w-4" />
-                        Verified
-                      </span>
-                    ) : null}
-                  </div>
+  <UserAvatar
+    src={listing?.seller?.avatarUrl}
+    alt={username ? `@${username}` : "Seller"}
+    size={32}
+  />
+  <SellerHandle username={username} />
+  {verified ? (
+    <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
+      <BadgeCheck className="h-4 w-4" />
+      Verified
+    </span>
+  ) : null}
+</div>
                 </CardContent>
               </Card>
             </div>
@@ -345,7 +350,7 @@ export default function ListingDetails() {
               </Card>
             </div>
 
-            {/* ✅ Like | Comment | Share BEFORE Buy/Message */}
+            {/* Like | Comment | Share BEFORE Buy/Message */}
             <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
               <button type="button" className={actionBtn} onClick={onToggleLike}>
                 <Heart
