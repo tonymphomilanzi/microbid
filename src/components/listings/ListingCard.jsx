@@ -27,11 +27,11 @@ function SellerHandle({ username }) {
     </span>
   );
 }
-
-export default function ListingCard({ listing }) {
   const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const isOnline = (ts) =>
   ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false;
+
+export default function ListingCard({ listing }) {
 
 
   const navigate = useNavigate();
