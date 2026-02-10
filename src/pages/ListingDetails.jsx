@@ -418,7 +418,7 @@ export default function ListingDetails() {
                     comments.map((c) => (
                       <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm">
+                          <div className="flex items-center gap-2 text-sm">
                              <UserAvatar
                                 src={c.author?.avatarUrl}
                                 alt={c.author?.username ? `@${c.author.username}` : "User"}
