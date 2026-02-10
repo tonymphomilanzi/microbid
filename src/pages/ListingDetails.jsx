@@ -13,6 +13,7 @@ import ChatDialog from "../components/chat/ChatDialog";
 import ShareSheet from "../components/shared/ShareSheet";
 import { useToast } from "../hooks/use-toast";
 import { ToastAction } from "../components/ui/toast";
+import UserAvatar from "../components/shared/UserAvatar";
 
 function SellerHandle({ username }) {
   if (username) return <span className="truncate text-sm font-medium">@{username}</span>;
@@ -418,7 +419,11 @@ export default function ListingDetails() {
                       <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm">
-                            <CommentAuthor username={c.author?.username} />
+                            <UserAvatar
+                               src={c.author?.avatarUrl}
+                               alt={c.author?.username ? `@${c.author.username}` : "User"}
+                               size={32}
+                             />
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
