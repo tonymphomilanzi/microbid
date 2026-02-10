@@ -10,6 +10,10 @@ function readJson(req) {
   return {};
 }
 
+function q1(v) {
+  return Array.isArray(v) ? v[0] : v;
+}
+
 function normalizeUsername(input) {
   return String(input || "")
     .trim()
@@ -47,13 +51,25 @@ function monthKey(d = new Date()) {
   return `${y}-${m}`;
 }
 
+// TOP-LEVEL (prevents TDZ/minifier issues)
+async function optionalAuthUid(req) {
+  try {
+    const header = req.headers.authorization || "";
+    if (!header.startsWith("Bearer ")) return null;
+    const decoded = await requireAuth(req);
+    return decoded?.uid || null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   try {
     // -------------------------
     // PUBLIC: username availability check
     // GET /api/me?checkUsername=...
     // -------------------------
-    const check = req.query?.checkUsername;
+    const check = q1(req.query?.checkUsername);
     if (req.method === "GET" && check) {
       const normalized = normalizeUsername(check);
 
@@ -84,8 +100,8 @@ export default async function handler(req, res) {
       if (!available) {
         const candidates = buildSuggestions(normalized);
         const filtered = [];
-        for (const c of candidates) {
-          if (await usernameAvailable(c, null)) filtered.push(c);
+        for (const candidate of candidates) {
+          if (await usernameAvailable(candidate, null)) filtered.push(candidate);
         }
         suggestions = filtered;
       }
@@ -93,23 +109,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ available, normalized, suggestions });
     }
 
-
-    async function optionalAuthUid(req) {
-  try {
-    const header = req.headers.authorization || "";
-    if (!header.startsWith("Bearer ")) return null;
-    const decoded = await requireAuth(req);
-    return decoded?.uid || null;
-  } catch {
-    return null;
-  }
-}
-
     // -------------------------
     // PUBLIC: plans list
     // GET /api/me?public=plans
     // -------------------------
-    if (req.method === "GET" && req.query?.public === "plans") {
+    if (req.method === "GET" && q1(req.query?.public) === "plans") {
       const plans = await prisma.plan.findMany({
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
@@ -122,71 +126,65 @@ export default async function handler(req, res) {
     // GET /api/me?public=feed
     // optional: &id=... &q=... &tag=... &category=...
     // -------------------------
- // -------------------------
-// PUBLIC: feed list OR single post
-// GET /api/me?public=feed
-// optional: &id=... &q=... &tag=... &category=...
-// -------------------------
-if (req.method === "GET" && req.query?.public === "feed") {
-  const id = String(req.query?.id || "");
-  const q = String(req.query?.q || "");
-  const tag = String(req.query?.tag || "").toUpperCase(); // NEW | UPDATE | CHANGELOG
-  const category = String(req.query?.category || "");
+    if (req.method === "GET" && q1(req.query?.public) === "feed") {
+      const id = String(q1(req.query?.id) || "");
+      const q = String(q1(req.query?.q) || "");
+      const tag = String(q1(req.query?.tag) || "").toUpperCase();
+      const category = String(q1(req.query?.category) || "");
 
-  const uid = await optionalAuthUid(req); // may be null
+      const uid = await optionalAuthUid(req); // may be null
 
-  const postsRaw = await prisma.feedPost.findMany({
-    where: {
-      ...(id ? { id } : {}),
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q, mode: "insensitive" } },
-              { body: { contains: q, mode: "insensitive" } },
-              { category: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-      ...(tag ? { tags: { has: tag } } : {}),
-      ...(category ? { category } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: id ? 1 : 50,
-    include: {
-      author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
+      const postsRaw = await prisma.feedPost.findMany({
+        where: {
+          ...(id ? { id } : {}),
+          ...(q
+            ? {
+                OR: [
+                  { title: { contains: q, mode: "insensitive" } },
+                  { body: { contains: q, mode: "insensitive" } },
+                  { category: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+          ...(tag ? { tags: { has: tag } } : {}),
+          ...(category ? { category } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: id ? 1 : 50,
+        include: {
+          author: {
+            select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true },
+          },
+          _count: { select: { likes: true, comments: true } },
+          ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
+          ...(id
+            ? {
+                comments: {
+                  orderBy: { createdAt: "desc" },
+                  take: 50,
+                  include: {
+                    author: {
+                      select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true },
+                    },
+                  },
+                },
+              }
+            : {}),
+        },
+      });
 
-      _count: { select: { likes: true, comments: true } },
+      const posts = postsRaw.map((post) => {
+        const { _count, likes, ...rest } = post;
+        return {
+          ...rest,
+          likeCount: _count?.likes ?? 0,
+          commentCount: _count?.comments ?? 0,
+          likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
+        };
+      });
 
-      ...(uid
-        ? { likes: { where: { userId: uid }, select: { id: true } } }
-        : {}),
-
-      ...(id
-        ? {
-            comments: {
-              orderBy: { createdAt: "desc" },
-              take: 50,
-              include: {
-                author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
-              },
-            },
-          }
-        : {}),
-    },
-  });
-
-  const posts = postsRaw.map((p) => {
-    const { _count, likes, ...rest } = p;
-    return {
-      ...rest,
-      likeCount: _count?.likes ?? 0,
-      commentCount: _count?.comments ?? 0,
-      likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
-    };
-  });
-
-  return res.status(200).json({ posts });
-}
+      return res.status(200).json({ posts });
+    }
 
     // -------------------------
     // Everything else requires auth
@@ -197,7 +195,7 @@ if (req.method === "GET" && req.query?.public === "feed") {
     // AUTH: feed unread count
     // GET /api/me?feedUnread=1
     // -------------------------
-    if (req.method === "GET" && req.query?.feedUnread === "1") {
+    if (req.method === "GET" && q1(req.query?.feedUnread) === "1") {
       const u = await prisma.user.findUnique({
         where: { id: decoded.uid },
         select: { lastFeedSeenAt: true },
@@ -239,7 +237,9 @@ if (req.method === "GET" && req.query?.public === "feed") {
       });
 
       const currentPlan =
-        plans.find((p) => p.name === user.tier) || plans.find((p) => p.name === "FREE") || null;
+        plans.find((plan) => plan.name === user.tier) ||
+        plans.find((plan) => plan.name === "FREE") ||
+        null;
 
       const mk = monthKey();
       const usage = await prisma.usageMonth.upsert({
@@ -255,139 +255,16 @@ if (req.method === "GET" && req.query?.public === "feed") {
 
     // -------------------------
     // POST /api/me
-    // - markFeedSeen
-    // - requestUpgrade
-    // - setUsername
     // -------------------------
     if (req.method === "POST") {
       const body = readJson(req);
 
-
+      // Only query role when needed (admin delete)
       const dbUserRole = await prisma.user.findUnique({
-            where: { id: decoded.uid },
-            select: { role: true },
-            });
-
+        where: { id: decoded.uid },
+        select: { role: true },
+      });
       const isAdmin = dbUserRole?.role === "ADMIN";
-
-
-
-
-
-
-if (body.intent === "editFeedComment") {
-  const commentId = String(body.commentId || "");
-  const text = String(body.body || "").trim();
-
-  if (!commentId) return res.status(400).json({ message: "commentId is required" });
-  if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
-  if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
-
-  const existing = await prisma.feedComment.findUnique({
-    where: { id: commentId },
-    select: { id: true, authorId: true, postId: true },
-  });
-
-  if (!existing) return res.status(404).json({ message: "Comment not found" });
-  if (existing.authorId !== decoded.uid) return res.status(403).json({ message: "Not allowed" });
-
-  const comment = await prisma.feedComment.update({
-    where: { id: commentId },
-    data: { body: text },
-    include: {
-      author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
-    },
-  });
-
-  return res.status(200).json({ comment });
-}
-
-
-
-
-if (body.intent === "deleteFeedComment") {
-  const commentId = String(body.commentId || "");
-  if (!commentId) return res.status(400).json({ message: "commentId is required" });
-
-  const existing = await prisma.feedComment.findUnique({
-    where: { id: commentId },
-    select: { id: true, authorId: true, postId: true },
-  });
-
-  if (!existing) return res.status(404).json({ message: "Comment not found" });
-
-  const canDelete = existing.authorId === decoded.uid || isAdmin;
-  if (!canDelete) return res.status(403).json({ message: "Not allowed" });
-
-  await prisma.feedComment.delete({ where: { id: commentId } });
-
-  const counts = await prisma.feedPost.findUnique({
-    where: { id: existing.postId },
-    select: { _count: { select: { likes: true, comments: true } } },
-  });
-
-  return res.status(200).json({
-    ok: true,
-    commentId,
-    postId: existing.postId,
-    likeCount: counts?._count?.likes ?? 0,
-    commentCount: counts?._count?.comments ?? 0,
-  });
-}
-
-      if (body.intent === "toggleFeedLike") {
-  const postId = String(body.postId || "");
-  if (!postId) return res.status(400).json({ message: "postId is required" });
-
-  const where = { postId_userId: { postId, userId: decoded.uid } };
-  const existing = await prisma.feedPostLike.findUnique({ where });
-
-  if (existing) {
-    await prisma.feedPostLike.delete({ where });
-  } else {
-    await prisma.feedPostLike.create({ data: { postId, userId: decoded.uid } });
-  }
-
-  const counts = await prisma.feedPost.findUnique({
-    where: { id: postId },
-    select: { _count: { select: { likes: true, comments: true } } },
-  });
-
-  return res.status(200).json({
-    liked: !existing,
-    likeCount: counts?._count?.likes ?? 0,
-    commentCount: counts?._count?.comments ?? 0,
-  });
-}
-
-
-
-if (body.intent === "addFeedComment") {
-  const postId = String(body.postId || "");
-  const text = String(body.body || "").trim();
-
-  if (!postId) return res.status(400).json({ message: "postId is required" });
-  if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
-  if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
-
-  const comment = await prisma.feedComment.create({
-    data: { postId, authorId: decoded.uid, body: text },
-    include: {
-      author: { select: { id: true, username: true, isVerified: true, tier: true } },
-    },
-  });
-
-  const counts = await prisma.feedPost.findUnique({
-    where: { id: postId },
-    select: { _count: { select: { likes: true, comments: true } } },
-  });
-
-  return res.status(201).json({
-    comment,
-    likeCount: counts?._count?.likes ?? 0,
-    commentCount: counts?._count?.comments ?? 0,
-  });
-}
 
       // mark feed seen
       if (body.intent === "markFeedSeen") {
@@ -398,14 +275,121 @@ if (body.intent === "addFeedComment") {
         return res.status(200).json({ ok: true });
       }
 
+      // toggle feed like
+      if (body.intent === "toggleFeedLike") {
+        const postId = String(body.postId || "");
+        if (!postId) return res.status(400).json({ message: "postId is required" });
+
+        const where = { postId_userId: { postId, userId: decoded.uid } };
+        const existing = await prisma.feedPostLike.findUnique({ where });
+
+        if (existing) await prisma.feedPostLike.delete({ where });
+        else await prisma.feedPostLike.create({ data: { postId, userId: decoded.uid } });
+
+        const counts = await prisma.feedPost.findUnique({
+          where: { id: postId },
+          select: { _count: { select: { likes: true, comments: true } } },
+        });
+
+        return res.status(200).json({
+          liked: !existing,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+        });
+      }
+
+      // add feed comment
+      if (body.intent === "addFeedComment") {
+        const postId = String(body.postId || "");
+        const text = String(body.body || "").trim();
+
+        if (!postId) return res.status(400).json({ message: "postId is required" });
+        if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+        if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+
+        const comment = await prisma.feedComment.create({
+          data: { postId, authorId: decoded.uid, body: text },
+          include: {
+            author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
+          },
+        });
+
+        const counts = await prisma.feedPost.findUnique({
+          where: { id: postId },
+          select: { _count: { select: { likes: true, comments: true } } },
+        });
+
+        return res.status(201).json({
+          comment,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+        });
+      }
+
+      // edit feed comment (author only)
+      if (body.intent === "editFeedComment") {
+        const commentId = String(body.commentId || "");
+        const text = String(body.body || "").trim();
+
+        if (!commentId) return res.status(400).json({ message: "commentId is required" });
+        if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+        if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+
+        const existing = await prisma.feedComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, authorId: true },
+        });
+
+        if (!existing) return res.status(404).json({ message: "Comment not found" });
+        if (existing.authorId !== decoded.uid) return res.status(403).json({ message: "Not allowed" });
+
+        const comment = await prisma.feedComment.update({
+          where: { id: commentId },
+          data: { body: text },
+          include: {
+            author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
+          },
+        });
+
+        return res.status(200).json({ comment });
+      }
+
+      // delete feed comment (author or admin)
+      if (body.intent === "deleteFeedComment") {
+        const commentId = String(body.commentId || "");
+        if (!commentId) return res.status(400).json({ message: "commentId is required" });
+
+        const existing = await prisma.feedComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, authorId: true, postId: true },
+        });
+
+        if (!existing) return res.status(404).json({ message: "Comment not found" });
+
+        const canDelete = existing.authorId === decoded.uid || isAdmin;
+        if (!canDelete) return res.status(403).json({ message: "Not allowed" });
+
+        await prisma.feedComment.delete({ where: { id: commentId } });
+
+        const counts = await prisma.feedPost.findUnique({
+          where: { id: existing.postId },
+          select: { _count: { select: { likes: true, comments: true } } },
+        });
+
+        return res.status(200).json({
+          ok: true,
+          commentId,
+          postId: existing.postId,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+        });
+      }
+
       // upgrade request
       if (body.intent === "requestUpgrade") {
         const planName = String(body.planName || "").toUpperCase();
-
         if (!["PRO", "VIP"].includes(planName)) {
-          return res
-            .status(400)
-            .json({ message: "Invalid plan. Only PRO or VIP upgrades allowed." });
+          return res.status(400).json({ message: "Invalid plan. Only PRO or VIP upgrades allowed." });
         }
 
         const plan = await prisma.plan.findUnique({ where: { name: planName } });
@@ -438,38 +422,28 @@ if (body.intent === "addFeedComment") {
         return res.status(201).json({ request: created });
       }
 
-
       // set avatar
-if (body.intent === "setAvatar") {
-  const url = String(body.avatarUrl || "").trim();
+      if (body.intent === "setAvatar") {
+        const url = String(body.avatarUrl || "").trim();
+        const avatarUrl = url ? url : null;
 
-  // allow clearing avatar by sending empty string
-  const avatarUrl = url ? url : null;
+        const updated = await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { email: decoded.email ?? "unknown", avatarUrl },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown", avatarUrl },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            avatarUrl: true,
+            role: true,
+            tier: true,
+            isVerified: true,
+          },
+        });
 
-  const updated = await prisma.user.upsert({
-    where: { id: decoded.uid },
-    update: {
-      email: decoded.email ?? "unknown",
-      avatarUrl,
-    },
-    create: {
-      id: decoded.uid,
-      email: decoded.email ?? "unknown",
-      avatarUrl,
-    },
-    select: {
-      id: true,
-      email: true,
-      username: true,
-      avatarUrl: true, // 
-      role: true,
-      tier: true,
-      isVerified: true,
-    },
-  });
-
-  return res.status(200).json({ user: updated });
-}
+        return res.status(200).json({ user: updated });
+      }
 
       // set username
       if (body.username || body.intent === "setUsername") {
