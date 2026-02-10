@@ -12,6 +12,7 @@ import ShareSheet from "../components/shared/ShareSheet";
 
 import { Pencil, Trash2, Save, X } from "lucide-react";
 import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
+import UserAvatar from "../shared/UserAvatar";
 
 // shadcn toast
 import { useToast } from "../hooks/use-toast";
@@ -411,9 +412,14 @@ async function removeCommentConfirmed() {
     <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-sm">
-            <AuthorHandle username={c.author?.username} />
-          </div>
+        <div className="flex items-center gap-2">
+  <UserAvatar
+    src={c.author?.avatarUrl}
+    alt={c.author?.username ? `@${c.author.username}` : "User"}
+    size={32}
+  />
+  <AuthorHandle username={c.author?.username} />
+</div>
           <div className="text-xs text-muted-foreground">
             {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
           </div>
