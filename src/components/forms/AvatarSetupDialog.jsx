@@ -26,7 +26,7 @@ export default function AvatarSetupDialog({
     setError("");
     setSaving(true);
     try {
-      const { user } = await listingsService.setAvatar(value); // value can be "" to clear
+      const { user } = await listingsService.setAvatar(value);
       onSaved?.(user?.avatarUrl || "");
       onOpenChange(false);
     } catch (e) {
@@ -38,34 +38,37 @@ export default function AvatarSetupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Set your avatar</DialogTitle>
+      <DialogContent className="sm:max-w-sm p-4 max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="text-base">Set avatar</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Preview */}
           <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/10 p-3">
-            <UserAvatar src={value} size={48} />
-            <div className="text-sm">
-              {value ? "This will appear publicly on your listings and comments." : "Using default avatar."}
+            <UserAvatar src={value} size={40} />
+            <div className="text-xs text-muted-foreground">
+              {value ? "Shown on listings & comments." : "Using default avatar."}
             </div>
           </div>
 
           <Separator className="bg-border/60" />
 
-          {/* Upload */}
+          {/* Upload (tile mode is compact) */}
           <div className="space-y-2">
-            <div className="text-sm font-semibold">Upload avatar</div>
-            <ImageUpload value={value} onChange={setValue} mode="tile" />
-            <div className="text-xs text-muted-foreground">
-              Tip: square images work best.
+            <div className="text-sm font-semibold">Upload</div>
+            <div className="max-w-[220px]">
+              <ImageUpload value={value} onChange={setValue} mode="tile" />
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              Square images look best.
             </div>
           </div>
 
-          <div className="flex gap-2">
+          {/* Actions */}
+          <div className="grid grid-cols-2 gap-2">
             <Button onClick={save} disabled={saving}>
-              {saving ? "Saving..." : "Save avatar"}
+              {saving ? "Saving..." : "Save"}
             </Button>
 
             <Button
@@ -74,12 +77,12 @@ export default function AvatarSetupDialog({
               onClick={() => setValue("")}
               disabled={saving}
             >
-              Use default
+              Default
             </Button>
           </div>
 
           {error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
               {error}
             </div>
           ) : null}
