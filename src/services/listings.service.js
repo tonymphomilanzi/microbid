@@ -53,5 +53,8 @@ requestUpgrade: (planName) =>
 
   addListingComment: (listingId, body) =>
     api.post("/listings", { intent: "addListingComment", listingId, body }).then((r) => r.data),
+
+  setAvatar: (avatarUrl) =>
+  api.post("/me", { intent: "setAvatar", avatarUrl }).then((r) => r.data),
 };
 

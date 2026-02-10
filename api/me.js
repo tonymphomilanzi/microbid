@@ -438,6 +438,39 @@ if (body.intent === "addFeedComment") {
         return res.status(201).json({ request: created });
       }
 
+
+      // set avatar
+if (body.intent === "setAvatar") {
+  const url = String(body.avatarUrl || "").trim();
+
+  // allow clearing avatar by sending empty string
+  const avatarUrl = url ? url : null;
+
+  const updated = await prisma.user.upsert({
+    where: { id: decoded.uid },
+    update: {
+      email: decoded.email ?? "unknown",
+      avatarUrl,
+    },
+    create: {
+      id: decoded.uid,
+      email: decoded.email ?? "unknown",
+      avatarUrl,
+    },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      avatarUrl: true, // 
+      role: true,
+      tier: true,
+      isVerified: true,
+    },
+  });
+
+  return res.status(200).json({ user: updated });
+}
+
       // set username
       if (body.username || body.intent === "setUsername") {
         const normalized = normalizeUsername(body.username);
@@ -461,6 +494,7 @@ if (body.intent === "addFeedComment") {
             id: true,
             email: true,
             username: true,
+            avatarUrl: true,
             role: true,
             tier: true,
             isVerified: true,

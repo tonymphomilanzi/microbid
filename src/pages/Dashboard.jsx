@@ -6,6 +6,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import { listingsService } from "../services/listings.service";
+import AvatarSetupDialog from "../components/forms/AvatarSetupDialog";
 import {
   PlusCircle,
   Trash2,
@@ -43,7 +44,15 @@ export default function Dashboard() {
 
 const { isAdmin, refreshMe, logout } = useAuth();
   
-  /////////////////
+
+//avatar////////////////////////////////////////
+const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
+
+useEffect(() => {
+  if (tabParam === "avatar") setAvatarDialogOpen(true);
+}, [tabParam]);
+/////////////////////////////////////////////////
+
   // Plans (from /api/me)
 const [plans, setPlans] = useState([]);
 const [currentPlan, setCurrentPlan] = useState(null);
@@ -227,6 +236,20 @@ function setTab(next) {
      <Button onClick={() => setSp({ tab: "settings" }, { replace: true })}>
   Set username
 </Button>
+    </div>
+  </div>
+) : null}
+
+{me && !me.avatarUrl ? (
+  <div className="rounded-xl border border-primary/25 bg-primary/10 p-4">
+    <div className="text-sm font-semibold">Set your avatar</div>
+    <div className="mt-1 text-sm text-muted-foreground">
+      Add a profile image.
+    </div>
+    <div className="mt-3">
+      <Button onClick={() => setSp({ tab: "avatar" }, { replace: true })}>
+        Set avatar
+      </Button>
     </div>
   </div>
 ) : null}
@@ -623,6 +646,21 @@ const initials = otherUsername ? otherUsername.slice(0, 2).toUpperCase() : "U";
   onSaved={async (newUsername) => {
     await refreshMe?.();
     setMe((prev) => (prev ? { ...prev, username: newUsername } : prev));
+    setSp({}, { replace: true });
+  }}
+/>
+
+
+<AvatarSetupDialog
+  open={avatarDialogOpen}
+  onOpenChange={(open) => {
+    setAvatarDialogOpen(open);
+    if (!open) setSp({}, { replace: true }); // clears ?tab=avatar
+  }}
+  initialAvatarUrl={me?.avatarUrl || ""}
+  onSaved={async (newUrl) => {
+    await refreshMe?.();
+    setMe((prev) => (prev ? { ...prev, avatarUrl: newUrl } : prev));
     setSp({}, { replace: true });
   }}
 />
