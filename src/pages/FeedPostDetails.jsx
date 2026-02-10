@@ -378,7 +378,7 @@ async function removeCommentConfirmed() {
 <div className={`${actionBtn} border-r border-border/60 cursor-default`} title="Views">
   <Eye className="h-4 w-4 text-muted-foreground" />
   <div className="leading-tight">
-    <div className="font-medium">{post.viewCount ?? 0} Views</div>
+    <div className="font-medium">{post.viewCount ?? 0} views</div>
     
   </div>
 </div>
