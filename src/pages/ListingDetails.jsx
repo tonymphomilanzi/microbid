@@ -419,11 +419,12 @@ export default function ListingDetails() {
                       <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-sm">
-                            <UserAvatar
-                               src={c.author?.avatarUrl}
-                               alt={c.author?.username ? `@${c.author.username}` : "User"}
-                               size={32}
-                             />
+                             <UserAvatar
+                                src={c.author?.avatarUrl}
+                                alt={c.author?.username ? `@${c.author.username}` : "User"}
+                                size={32}
+                              />
+                            <CommentAuthor username={c.author?.username} />
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
