@@ -24,6 +24,9 @@ function AuthorHandle({ username }) {
 }
 
 export default function FeedPostDetails() {
+    const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+const isOnline = (ts) =>
+  ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false;
   const { id } = useParams();
   const { user, openAuthModal,isAdmin } = useAuth();
   const { toast } = useToast();
@@ -417,6 +420,7 @@ async function removeCommentConfirmed() {
     src={c.author?.avatarUrl}
     alt={c.author?.username ? `@${c.author.username}` : "User"}
     size={32}
+     online={isOnline(listing.seller?.lastActiveAt)}
   />
   <AuthorHandle username={c.author?.username} />
 </div>

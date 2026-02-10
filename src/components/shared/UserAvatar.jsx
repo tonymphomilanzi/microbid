@@ -30,7 +30,7 @@ export default function UserAvatar({
         <span
           className={[
             "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background shadow-sm",
-            online ? "bg-emerald-300" : "bg-zinc-400/70",
+            online ? "bg-emerald-600" : "bg-zinc-500/50",
           ].join(" ")}
           title={online ? "Online" : "Offline"}
         />

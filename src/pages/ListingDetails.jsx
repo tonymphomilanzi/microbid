@@ -307,6 +307,7 @@ const isOnline = (ts) =>
     src={listing?.seller?.avatarUrl}
     alt={username ? `@${username}` : "Seller"}
     size={32}
+     online={isOnline(listing.seller?.lastActiveAt)}
   />
   <SellerHandle username={username} />
   {verified ? (
@@ -433,6 +434,7 @@ const isOnline = (ts) =>
                                 src={c.author?.avatarUrl}
                                 alt={c.author?.username ? `@${c.author.username}` : "User"}
                                 size={32}
+                                 online={isOnline(listing.seller?.lastActiveAt)}
                               />
                             <CommentAuthor username={c.author?.username} />
                           </div>
