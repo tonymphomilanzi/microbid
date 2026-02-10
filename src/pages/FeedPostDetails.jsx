@@ -7,7 +7,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../components/ui/drawer";
 import { feedService } from "../services/feed.service";
 import { useAuth } from "../context/AuthContext";
-import { Heart, MessageSquare, Share2, Send } from "lucide-react";
+import { Heart, MessageSquare, Share2, Send, Eye } from "lucide-react";
 import ShareSheet from "../components/shared/ShareSheet";
 
 import { Pencil, Trash2, Save, X } from "lucide-react";
@@ -348,8 +348,8 @@ async function removeCommentConfirmed() {
             {/* Action bar (Like | Comment | Share) */}
 
 
-<div className="grid grid-cols-3 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
-  {/* Like (left) */}
+<div className="grid grid-cols-4 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
+  {/* Like */}
   <button
     type="button"
     className={actionBtn}
@@ -364,7 +364,7 @@ async function removeCommentConfirmed() {
     <span className="font-medium">{post.likeCount ?? 0}</span>
   </button>
 
-  {/* Comment (middle) */}
+  {/* Comment */}
   <button
     type="button"
     className={`${actionBtn} border-x border-border/60`}
@@ -374,7 +374,16 @@ async function removeCommentConfirmed() {
     <span className="font-medium">{post.commentCount ?? 0}</span>
   </button>
 
-  {/* Share (right) */}
+  {/* Views (Binance-style) */}
+<div className={`${actionBtn} border-r border-border/60 cursor-default`} title="Views">
+  <Eye className="h-4 w-4 text-muted-foreground" />
+  <div className="leading-tight">
+    <div className="font-medium">{post.viewCount ?? 0}</div>
+    <div className="text-[11px] text-muted-foreground">Views</div>
+  </div>
+</div>
+
+  {/* Share (keep your ShareSheet) */}
   <ShareSheet url={shareUrl} title={post.title} text={(post.body || "").slice(0, 120)}>
     <button type="button" className={actionBtn}>
       <Share2 className="h-4 w-4 text-muted-foreground" />

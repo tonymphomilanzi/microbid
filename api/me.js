@@ -51,7 +51,7 @@ function monthKey(d = new Date()) {
   return `${y}-${m}`;
 }
 
-// TOP-LEVEL (prevents TDZ/minifier issues)
+// TOP-LEVEL optional auth
 async function optionalAuthUid(req) {
   try {
     const header = req.headers.authorization || "";
@@ -60,6 +60,24 @@ async function optionalAuthUid(req) {
     return decoded?.uid || null;
   } catch {
     return null;
+  }
+}
+
+function viewerKeyFrom(req, uid) {
+  if (uid) return `u:${uid}`;
+  const did = String(req.headers["x-device-id"] || "").trim();
+  return did ? `d:${did}` : null;
+}
+
+// returns true if NEW view row created
+async function recordFeedView(postId, viewerKey) {
+  if (!viewerKey) return false;
+  try {
+    await prisma.feedPostView.create({ data: { postId, viewerKey } });
+    return true;
+  } catch (e) {
+    if (e?.code === "P2002") return false; // already viewed
+    throw e;
   }
 }
 
@@ -82,7 +100,6 @@ export default async function handler(req, res) {
         });
       }
 
-      // If user is logged in, allow their current username
       let currentUid = null;
       try {
         const header = req.headers.authorization || "";
@@ -133,6 +150,7 @@ export default async function handler(req, res) {
       const category = String(q1(req.query?.category) || "");
 
       const uid = await optionalAuthUid(req); // may be null
+      const vKey = viewerKeyFrom(req, uid);
 
       const postsRaw = await prisma.feedPost.findMany({
         where: {
@@ -153,10 +171,21 @@ export default async function handler(req, res) {
         take: id ? 1 : 50,
         include: {
           author: {
-            select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true },
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+              lastActiveAt: true,
+              isVerified: true,
+              tier: true,
+            },
           },
-          _count: { select: { likes: true, comments: true } },
+
+          // include views count
+          _count: { select: { likes: true, comments: true, views: true } },
+
           ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
+
           ...(id
             ? {
                 comments: {
@@ -164,7 +193,14 @@ export default async function handler(req, res) {
                   take: 50,
                   include: {
                     author: {
-                      select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true },
+                      select: {
+                        id: true,
+                        username: true,
+                        avatarUrl: true,
+                        lastActiveAt: true,
+                        isVerified: true,
+                        tier: true,
+                      },
                     },
                   },
                 },
@@ -173,12 +209,25 @@ export default async function handler(req, res) {
         },
       });
 
+      //  record view only for single-post fetch
+      let createdView = false;
+      if (id) {
+        createdView = await recordFeedView(id, vKey);
+      }
+
       const posts = postsRaw.map((post) => {
         const { _count, likes, ...rest } = post;
+
+        const baseViews = _count?.views ?? 0;
+        // if we just created a view for this id, reflect it immediately
+        const viewCount = id && post.id === id && createdView ? baseViews + 1 : baseViews;
+
         return {
           ...rest,
           likeCount: _count?.likes ?? 0,
           commentCount: _count?.comments ?? 0,
+          viewCount, // 
+
           likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
         };
       });
@@ -259,7 +308,6 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const body = readJson(req);
 
-      // Only query role when needed (admin delete)
       const dbUserRole = await prisma.user.findUnique({
         where: { id: decoded.uid },
         select: { role: true },
@@ -288,13 +336,14 @@ export default async function handler(req, res) {
 
         const counts = await prisma.feedPost.findUnique({
           where: { id: postId },
-          select: { _count: { select: { likes: true, comments: true } } },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
         });
 
         return res.status(200).json({
           liked: !existing,
           likeCount: counts?._count?.likes ?? 0,
           commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0,
         });
       }
 
@@ -310,19 +359,29 @@ export default async function handler(req, res) {
         const comment = await prisma.feedComment.create({
           data: { postId, authorId: decoded.uid, body: text },
           include: {
-            author: { select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true } },
+            author: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+                lastActiveAt: true,
+                isVerified: true,
+                tier: true,
+              },
+            },
           },
         });
 
         const counts = await prisma.feedPost.findUnique({
           where: { id: postId },
-          select: { _count: { select: { likes: true, comments: true } } },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
         });
 
         return res.status(201).json({
           comment,
           likeCount: counts?._count?.likes ?? 0,
           commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0,
         });
       }
 
@@ -347,7 +406,16 @@ export default async function handler(req, res) {
           where: { id: commentId },
           data: { body: text },
           include: {
-            author: { select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true } },
+            author: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+                lastActiveAt: true,
+                isVerified: true,
+                tier: true,
+              },
+            },
           },
         });
 
@@ -373,7 +441,7 @@ export default async function handler(req, res) {
 
         const counts = await prisma.feedPost.findUnique({
           where: { id: existing.postId },
-          select: { _count: { select: { likes: true, comments: true } } },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
         });
 
         return res.status(200).json({
@@ -382,28 +450,28 @@ export default async function handler(req, res) {
           postId: existing.postId,
           likeCount: counts?._count?.likes ?? 0,
           commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0,
         });
       }
 
-      //online offline status
-      // presence ping (update lastActiveAt)
-if (body.intent === "presencePing") {
-  await prisma.user.upsert({
-    where: { id: decoded.uid },
-    update: {
-      email: decoded.email ?? "unknown",
-      lastActiveAt: new Date(),
-    },
-    create: {
-      id: decoded.uid,
-      email: decoded.email ?? "unknown",
-      lastActiveAt: new Date(),
-    },
-    select: { id: true },
-  });
+      // presence ping
+      if (body.intent === "presencePing") {
+        await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: {
+            email: decoded.email ?? "unknown",
+            lastActiveAt: new Date(),
+          },
+          create: {
+            id: decoded.uid,
+            email: decoded.email ?? "unknown",
+            lastActiveAt: new Date(),
+          },
+          select: { id: true },
+        });
 
-  return res.status(200).json({ ok: true });
-}
+        return res.status(200).json({ ok: true });
+      }
 
       // upgrade request
       if (body.intent === "requestUpgrade") {

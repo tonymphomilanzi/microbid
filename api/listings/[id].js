@@ -12,6 +12,26 @@ async function optionalAuthUid(req) {
   }
 }
 
+function viewerKeyFrom(req, uid) {
+  if (uid) return `u:${uid}`;
+  const did = String(req.headers["x-device-id"] || "").trim();
+  return did ? `d:${did}` : null;
+}
+
+// returns true if a NEW view row was created, false if already existed
+async function recordListingView(listingId, viewerKey) {
+  if (!viewerKey) return false;
+
+  try {
+    await prisma.listingView.create({ data: { listingId, viewerKey } });
+    return true;
+  } catch (e) {
+    // unique constraint => already viewed
+    if (e?.code === "P2002") return false;
+    throw e;
+  }
+}
+
 export default async function handler(req, res) {
   try {
     const rawId = req.query?.id;
@@ -21,18 +41,24 @@ export default async function handler(req, res) {
 
     if (req.method === "GET") {
       const uid = await optionalAuthUid(req); // null if not logged in
+      const vKey = viewerKeyFrom(req, uid);
 
       const listing = await prisma.listing.findUnique({
         where: { id },
         include: {
           seller: {
-            // do NOT return email publicly
-            select: { id: true, username: true, avatarUrl: true, isVerified: true,lastActiveAt: true, tier: true },
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+              lastActiveAt: true,
+              isVerified: true,
+              tier: true,
+            },
           },
           category: true,
 
-          // counts for likes/comments
-          _count: { select: { likes: true, comments: true } },
+          _count: { select: { likes: true, comments: true, views: true } },
 
           // likedByMe (only if logged in)
           ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
@@ -40,6 +66,12 @@ export default async function handler(req, res) {
       });
 
       if (!listing) return res.status(404).json({ message: "Not found" });
+
+      // record unique view (don’t count seller’s own view)
+      let createdView = false;
+      if (!(uid && uid === listing.sellerId)) {
+        createdView = await recordListingView(id, vKey);
+      }
 
       // Ensure images always exists in response (backward compatibility)
       const images =
@@ -49,13 +81,17 @@ export default async function handler(req, res) {
             ? [listing.image]
             : [];
 
+      const baseViewCount = listing._count?.views ?? 0;
+      const viewCount = createdView ? baseViewCount + 1 : baseViewCount;
+
       const safeListing = {
         ...listing,
         images,
 
-        // flatten counts into fields your UI can use
         likeCount: listing._count?.likes ?? 0,
         commentCount: listing._count?.comments ?? 0,
+        viewCount, // include views
+
         likedByMe: uid ? (listing.likes?.length ?? 0) > 0 : false,
       };
 

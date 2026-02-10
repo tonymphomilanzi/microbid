@@ -48,29 +48,36 @@ function cleanImageList(arr) {
 
 export default async function handler(req, res) {
   try {
-
-
-
     // -------------------------
-// GET /api/listings?public=listingComments&listingId=...
-// -------------------------
-if (req.method === "GET" && req.query?.public === "listingComments") {
-  const listingId = String(req.query?.listingId || "");
-  if (!listingId) return res.status(400).json({ message: "listingId is required" });
+    // GET /api/listings?public=listingComments&listingId=...
+    // -------------------------
+    if (req.method === "GET" && req.query?.public === "listingComments") {
+      const listingId = String(req.query?.listingId || "");
+      if (!listingId) return res.status(400).json({ message: "listingId is required" });
 
-  const comments = await prisma.listingComment.findMany({
-    where: { listingId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      author: { select: { id: true, username: true,avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true } },
-    },
-  });
+      const comments = await prisma.listingComment.findMany({
+        where: { listingId },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: {
+          author: {
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+              lastActiveAt: true,
+              isVerified: true,
+              tier: true,
+            },
+          },
+        },
+      });
 
-  const commentCount = await prisma.listingComment.count({ where: { listingId } });
+      const commentCount = await prisma.listingComment.count({ where: { listingId } });
 
-  return res.status(200).json({ comments, commentCount });
-}
+      return res.status(200).json({ comments, commentCount });
+    }
+
     // -------------------------
     // GET /api/listings (public)
     // -------------------------
@@ -104,97 +111,113 @@ if (req.method === "GET" && req.query?.public === "listingComments") {
 
       const uid = await optionalAuthUid(req); // may be null (public)
 
-const listingsRaw = await prisma.listing.findMany({
-  where,
-  orderBy: { createdAt: "desc" },
-  include: {
-   seller: {
-  select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true },
-},
-    category: true,
+      const listingsRaw = await prisma.listing.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: {
+          seller: {
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+              lastActiveAt: true,
+              isVerified: true,
+              tier: true,
+            },
+          },
+          category: true,
 
-    _count: { select: { likes: true, comments: true } },
+          // ✅ include views
+          _count: { select: { likes: true, comments: true, views: true } },
 
-    ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
-  },
-});
+          ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
+        },
+      });
 
-const listings = listingsRaw.map((l) => {
-  const { _count, likes, ...rest } = l;
-  return {
-    ...rest,
-    likeCount: _count?.likes ?? 0,
-    commentCount: _count?.comments ?? 0,
-    likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
-  };
-});
+      const listings = listingsRaw.map((l) => {
+        const { _count, likes, ...rest } = l;
+        return {
+          ...rest,
+          likeCount: _count?.likes ?? 0,
+          commentCount: _count?.comments ?? 0,
+          viewCount: _count?.views ?? 0, // ✅
+          likedByMe: uid ? (likes?.length ?? 0) > 0 : false,
+        };
+      });
 
-return res.status(200).json({ listings });
+      return res.status(200).json({ listings });
     }
 
     // --------------------------
     // POST /api/listings (auth)
-    // - Create/Update listing
-    // - intent=checkout (Stripe)
     // --------------------------
     if (req.method === "POST") {
       const decoded = await requireAuth(req);
       const body = readJson(req);
 
-
-
       // Intent: toggle like
-if (body.intent === "toggleListingLike") {
-  const listingId = String(body.listingId || "");
-  if (!listingId) return res.status(400).json({ message: "Missing listingId" });
+      if (body.intent === "toggleListingLike") {
+        const listingId = String(body.listingId || "");
+        if (!listingId) return res.status(400).json({ message: "Missing listingId" });
 
-  const where = { listingId_userId: { listingId, userId: decoded.uid } };
-  const existing = await prisma.listingLike.findUnique({ where });
+        const where = { listingId_userId: { listingId, userId: decoded.uid } };
+        const existing = await prisma.listingLike.findUnique({ where });
 
-  if (existing) await prisma.listingLike.delete({ where });
-  else await prisma.listingLike.create({ data: { listingId, userId: decoded.uid } });
+        if (existing) await prisma.listingLike.delete({ where });
+        else await prisma.listingLike.create({ data: { listingId, userId: decoded.uid } });
 
-  const counts = await prisma.listing.findUnique({
-    where: { id: listingId },
-    select: { _count: { select: { likes: true, comments: true } } },
-  });
+        const counts = await prisma.listing.findUnique({
+          where: { id: listingId },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
+        });
 
-  return res.status(200).json({
-    liked: !existing,
-    likeCount: counts?._count?.likes ?? 0,
-    commentCount: counts?._count?.comments ?? 0,
-  });
-}
+        return res.status(200).json({
+          liked: !existing,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0, // ✅
+        });
+      }
 
-// Intent: add comment
-if (body.intent === "addListingComment") {
-  const listingId = String(body.listingId || "");
-  const text = String(body.body || "").trim();
+      // Intent: add comment
+      if (body.intent === "addListingComment") {
+        const listingId = String(body.listingId || "");
+        const text = String(body.body || "").trim();
 
-  if (!listingId) return res.status(400).json({ message: "Missing listingId" });
-  if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
-  if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
+        if (!listingId) return res.status(400).json({ message: "Missing listingId" });
+        if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+        if (text.length > 2000) return res.status(400).json({ message: "Comment too long (max 2000 chars)" });
 
-  const comment = await prisma.listingComment.create({
-    data: { listingId, authorId: decoded.uid, body: text },
-    include: {
-      author: { select: { id: true, username: true,avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true } },
-    },
-  });
+        const comment = await prisma.listingComment.create({
+          data: { listingId, authorId: decoded.uid, body: text },
+          include: {
+            author: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+                lastActiveAt: true,
+                isVerified: true,
+                tier: true,
+              },
+            },
+          },
+        });
 
-  const counts = await prisma.listing.findUnique({
-    where: { id: listingId },
-    select: { _count: { select: { likes: true, comments: true } } },
-  });
+        const counts = await prisma.listing.findUnique({
+          where: { id: listingId },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
+        });
 
-  return res.status(201).json({
-    comment,
-    likeCount: counts?._count?.likes ?? 0,
-    commentCount: counts?._count?.comments ?? 0,
-  });
-}
+        return res.status(201).json({
+          comment,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0, // ✅
+        });
+      }
 
-      // Intent: Stripe checkout (kept within allowed endpoint list)
+      // Intent: Stripe checkout
       if (body.intent === "checkout") {
         const listingId = body.listingId;
         if (!listingId) return res.status(400).json({ message: "Missing listingId" });
@@ -234,7 +257,6 @@ if (body.intent === "addListingComment") {
           },
         });
 
-        // Note: normally confirm payment via Stripe webhook.
         await prisma.purchase.create({
           data: {
             listingId: listing.id,
@@ -256,8 +278,8 @@ if (body.intent === "addListingComment") {
         categoryId,
         price,
         description,
-        image,    // cover image (optional if images[0] provided)
-        images,   // array (optional)
+        image,
+        images,
         metrics,
         status,
       } = body;
@@ -276,7 +298,7 @@ if (body.intent === "addListingComment") {
         select: { id: true, role: true },
       });
 
-      // Validate platform is active (admin-managed platforms list)
+      // Validate platform
       const platformRow = await prisma.platform.findFirst({
         where: { name: platform, isActive: true },
         select: { id: true },
@@ -286,7 +308,7 @@ if (body.intent === "addListingComment") {
         return res.status(400).json({ message: "Invalid or inactive platform" });
       }
 
-      // Validate category if provided + enforce admin-only
+      // Validate category + enforce admin-only
       let categoryToSet = null;
       if (categoryId) {
         const cat = await prisma.category.findUnique({
@@ -336,7 +358,14 @@ if (body.intent === "addListingComment") {
           },
           include: {
             seller: {
-              select: { id: true, email: true, username: true, isVerified: true, tier: true },
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+                lastActiveAt: true,
+                isVerified: true,
+                tier: true,
+              },
             },
             category: true,
           },
@@ -360,7 +389,14 @@ if (body.intent === "addListingComment") {
         },
         include: {
           seller: {
-            select: { id: true, email: true, username: true, isVerified: true, tier: true },
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+              lastActiveAt: true,
+              isVerified: true,
+              tier: true,
+            },
           },
           category: true,
         },

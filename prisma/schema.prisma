@@ -77,8 +77,12 @@ model FeedPost {
   likes     FeedPostLike[]
   comments  FeedComment[]
 
+  views FeedPostView[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+
 
   @@index([createdAt])
   @@index([authorId])
@@ -113,6 +117,8 @@ model Listing {
 
   likes     ListingLike[]
   comments  ListingComment[]
+
+  views ListingView[]
 }
 
 model Purchase {
@@ -475,4 +481,32 @@ model ListingComment {
 
   @@index([listingId, createdAt])
   @@index([authorId])
+}
+
+//views
+
+model ListingView {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  viewerKey String   // "u:<uid>" or "d:<deviceId>"
+  createdAt DateTime @default(now())
+
+  @@unique([listingId, viewerKey])
+  @@index([listingId])
+  @@index([viewerKey])
+}
+
+model FeedPostView {
+  id        String   @id @default(cuid())
+  postId    String
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  viewerKey String
+  createdAt DateTime @default(now())
+
+  @@unique([postId, viewerKey])
+  @@index([postId])
+  @@index([viewerKey])
 }
