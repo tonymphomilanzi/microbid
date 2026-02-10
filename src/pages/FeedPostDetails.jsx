@@ -12,7 +12,7 @@ import ShareSheet from "../components/shared/ShareSheet";
 
 import { Pencil, Trash2, Save, X } from "lucide-react";
 import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
-import UserAvatar from "../shared/UserAvatar";
+import UserAvatar from "../components/shared/UserAvatar";
 
 // shadcn toast
 import { useToast } from "../hooks/use-toast";
