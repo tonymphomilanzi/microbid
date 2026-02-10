@@ -406,7 +406,7 @@ export default function CreateListingForm({ initial }) {
             <Separator className="bg-border/60" />
 
             {/* STATUS + SUBMIT */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <section className="hidden lg:grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label>Listing status</Label>
                 <select
@@ -462,8 +462,7 @@ export default function CreateListingForm({ initial }) {
             <div>
               <div className="text-sm font-semibold">More images (optional)</div>
               <p className="text-xs text-muted-foreground">
-                Add up to {MAX_EXTRA_IMAGES} extra images (shown as a gallery on the listing details
-                page).
+                Add up to {MAX_EXTRA_IMAGES} extra images 
               </p>
 
               <div className="mt-3 grid grid-cols-3 gap-3">
@@ -483,6 +482,44 @@ export default function CreateListingForm({ initial }) {
                 ))}
               </div>
             </div>
+
+            {/* Mobile submit button (under other photos) */}
+<div className="lg:hidden">
+  <Separator className="my-4 bg-border/60" />
+
+  <div className="space-y-3">
+    <div>
+      <Label>Listing status</Label>
+      <select
+        className="mt-1 h-10 w-full rounded-md border border-border/60 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        value={form.status}
+        onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+      >
+        <option value="ACTIVE">Active (visible)</option>
+        <option value="INACTIVE">Inactive (hidden)</option>
+      </select>
+    </div>
+
+    <Button type="submit" className="w-full" disabled={!canSubmit || loading}>
+      {loading ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Saving...
+        </>
+      ) : form.id ? (
+        "Save Changes"
+      ) : (
+        "Create Listing"
+      )}
+    </Button>
+
+    {error ? (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+        {error}
+      </div>
+    ) : null}
+  </div>
+</div>
           </div>
         </form>
       </CardContent>

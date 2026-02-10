@@ -7,17 +7,12 @@ import { Input } from "../components/ui/input";
 import { useAuth } from "../context/AuthContext";
 import { feedService } from "../services/feed.service";
 import FeedPostSkeleton from "../components/feed/FeedPostSkeleton";
-import { Heart, MessageSquare, ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
-
-// shadcn toast (adjust path if yours differs)
-import { useToast } from "../hooks/use-toast";
-import { ToastAction } from "../components/ui/toast";
+import { ArrowRight, RefreshCcw, Search, Folder } from "lucide-react";
 
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
 
 export default function Feed() {
-  const { user, authReady, openAuthModal } = useAuth();
-  const { toast } = useToast();
+  const { user, authReady } = useAuth();
 
   const [sp] = useSearchParams();
   const navigate = useNavigate();
@@ -58,63 +53,16 @@ export default function Feed() {
     }
   }
 
-useEffect(() => {
-  if (!authReady) return; //wait until firebase decides logged-in OR logged-out
-  load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [params.q, params.tag, params.category, authReady, user?.uid]);
+  useEffect(() => {
+    if (!authReady) return; // wait until firebase decides logged-in OR logged-out
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.q, params.tag, params.category, authReady, user?.uid]);
 
- useEffect(() => {
-  if (!authReady || !user) return;
-  feedService.markSeen().catch(() => {});
-}, [authReady, user]);
-
-  function needLoginToast() {
-    toast({
-      title: "Login required",
-      description: "Please login to like or comment.",
-      action: (
-        <ToastAction altText="Login" onClick={openAuthModal}>
-          Login
-        </ToastAction>
-      ),
-    });
-  }
-
-  async function onToggleLike(postId) {
-    if (!user) return needLoginToast();
-
-    // optimistic update
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
-        const liked = !p.likedByMe;
-        return {
-          ...p,
-          likedByMe: liked,
-          likeCount: Math.max(0, (p.likeCount || 0) + (liked ? 1 : -1)),
-        };
-      })
-    );
-
-    try {
-      const res = await feedService.toggleLike(postId);
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, likedByMe: res.liked, likeCount: res.likeCount, commentCount: res.commentCount }
-            : p
-        )
-      );
-    } catch (e) {
-      // revert by refetch (simplest + consistent)
-      load();
-      toast({
-        title: "Could not like post",
-        description: e?.response?.data?.message || e.message || "Try again.",
-      });
-    }
-  }
+  useEffect(() => {
+    if (!authReady || !user) return;
+    feedService.markSeen().catch(() => {});
+  }, [authReady, user]);
 
   return (
     <div className="relative overflow-hidden">
@@ -215,60 +163,34 @@ useEffect(() => {
                   {/* Image */}
                   <Link to={`/feed/${p.id}`} state={{ post: p }}>
                     <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted aspect-[16/10] sm:aspect-[16/9]">
-                    {p.image ? (
-                      <>
-                        <img
-                          src={p.image}
-                          alt={p.title}
-                          className="h-full w-full object-cover bg-muted transition duration-300 group-hover:scale-[1.03]"
-                          loading="lazy"
-                        />
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/55 via-transparent to-transparent opacity-70" />
-                      </>
-                    ) : (
-                      <div className="h-full w-full bg-gradient-to-br from-muted/40 to-muted/10" />
-                    )}
-                  </div>
+                      {p.image ? (
+                        <>
+                          <img
+                            src={p.image}
+                            alt={p.title}
+                            className="h-full w-full object-cover bg-muted transition duration-300 group-hover:scale-[1.03]"
+                            loading="lazy"
+                          />
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/55 via-transparent to-transparent opacity-70" />
+                        </>
+                      ) : (
+                        <div className="h-full w-full bg-gradient-to-br from-muted/40 to-muted/10" />
+                      )}
+                    </div>
                   </Link>
 
                   <CardContent className="p-4 sm:p-5 space-y-3">
                     <h2 className="text-base font-semibold leading-snug">
-                     <Link to={`/feed/${p.id}`} state={{ post: p }}><span className="line-clamp-2">{p.title}</span></Link>  
+                      <Link to={`/feed/${p.id}`} state={{ post: p }}>
+                        <span className="line-clamp-2">{p.title}</span>
+                      </Link>
                     </h2>
 
-                    {/* Like + comment counts */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => onToggleLike(p.id)}
-                        >
-                          <Heart
-                            className={[
-                              "h-4 w-4",
-                              p.likedByMe ? "fill-primary text-primary" : "text-muted-foreground",
-                            ].join(" ")}
-                          />
-                          <span className="text-sm">{p.likeCount ?? 0}</span>
-                        </Button>
-
-                        <Button asChild variant="outline" size="sm" className="gap-2">
-                          <Link to={`/feed/${p.id}`} state={{ post: p, focusComment: true }}>
-                            <MessageSquare className="h-4 w-4" />
-                            <span className="text-sm">{p.commentCount ?? 0}</span>
-                          </Link>
-                        </Button>
-                      </div>
-
-                      <Button asChild variant="default" size="sm" className="gap-2">
-                        <Link to={`/feed/${p.id}`} state={{ post: p }}>
-                          See more <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                    </div>
+                    <Button asChild variant="default" size="sm" className="w-full gap-2">
+                      <Link to={`/feed/${p.id}`} state={{ post: p }}>
+                        See more <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
                   </CardContent>
                 </Card>
               ))}
