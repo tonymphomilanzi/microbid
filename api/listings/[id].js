@@ -27,12 +27,7 @@ export default async function handler(req, res) {
         include: {
           seller: {
             // do NOT return email publicly
-            select: {
-              id: true,
-              username: true,
-              isVerified: true,
-              tier: true,
-            },
+            select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true },
           },
           category: true,
 

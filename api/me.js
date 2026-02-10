@@ -153,7 +153,7 @@ if (req.method === "GET" && req.query?.public === "feed") {
     orderBy: { createdAt: "desc" },
     take: id ? 1 : 50,
     include: {
-      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
 
       _count: { select: { likes: true, comments: true } },
 
@@ -167,7 +167,7 @@ if (req.method === "GET" && req.query?.public === "feed") {
               orderBy: { createdAt: "desc" },
               take: 50,
               include: {
-                author: { select: { id: true, username: true, isVerified: true, tier: true } },
+                author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
               },
             },
           }
@@ -295,7 +295,7 @@ if (body.intent === "editFeedComment") {
     where: { id: commentId },
     data: { body: text },
     include: {
-      author: { select: { id: true, username: true, isVerified: true, tier: true } },
+      author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
     },
   });
 

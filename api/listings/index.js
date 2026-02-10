@@ -108,10 +108,9 @@ const listingsRaw = await prisma.listing.findMany({
   where,
   orderBy: { createdAt: "desc" },
   include: {
-    seller: {
-      // IMPORTANT: don't leak email in public response
-      select: { id: true, username: true, isVerified: true, tier: true },
-    },
+   seller: {
+  select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true },
+},
     category: true,
 
     _count: { select: { likes: true, comments: true } },

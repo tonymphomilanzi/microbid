@@ -4,6 +4,7 @@ import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { DollarSign, Image as ImageIcon, BadgeCheck } from "lucide-react";
 import ShareSheet from "../shared/ShareSheet";
+import UserAvatar from "../shared/UserAvatar";
 
 const platformClasses = (p) => {
   if (p === "YouTube") return "bg-red-500/10 text-red-300 border-red-500/20";
@@ -111,7 +112,11 @@ export default function ListingCard({ listing }) {
                   : "border-border/60 bg-muted/20 text-muted-foreground",
               ].join(" ")}
             >
-              {initialsFromUsername(username)}
+            <UserAvatar
+  src={listing?.seller?.avatarUrl}
+  alt={username ? `@${username}` : "Seller"}
+  size={36}
+/>
             </div>
 
             <div className="min-w-0 flex items-center gap-1">
