@@ -16,7 +16,7 @@ import { ToastAction } from "../components/ui/toast";
 const TAGS = ["ALL", "NEW", "UPDATE", "CHANGELOG"];
 
 export default function Feed() {
-  const { user, openAuthModal } = useAuth();
+  const { user, authReady, openAuthModal } = useAuth();
   const { toast } = useToast();
 
   const [sp] = useSearchParams();
@@ -58,15 +58,16 @@ export default function Feed() {
     }
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.q, params.tag, params.category]);
+useEffect(() => {
+  if (!authReady) return; //wait until firebase decides logged-in OR logged-out
+  load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [params.q, params.tag, params.category, authReady, user?.uid]);
 
-  useEffect(() => {
-    if (!user) return;
-    feedService.markSeen().catch(() => {});
-  }, [user]);
+ useEffect(() => {
+  if (!authReady || !user) return;
+  feedService.markSeen().catch(() => {});
+}, [authReady, user]);
 
   function needLoginToast() {
     toast({

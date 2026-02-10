@@ -142,7 +142,11 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
+
+      // existing flag
       authLoading,
+
+      authReady: !authLoading,
 
       authModalOpen,
       openAuthModal: () => setAuthModalOpen(true),

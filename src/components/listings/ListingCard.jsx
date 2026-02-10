@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState,useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -140,6 +140,14 @@ export default function ListingCard({ listing }) {
       setCommentSending(false);
     }
   }
+
+
+  useEffect(() => {
+  setLikedByMe(Boolean(listing?.likedByMe));
+  setLikeCount(Number(listing?.likeCount ?? 0));
+  setCommentCount(Number(listing?.commentCount ?? 0));
+}, [listing?.id, listing?.likedByMe, listing?.likeCount, listing?.commentCount]);
+
 
   return (
     <>
