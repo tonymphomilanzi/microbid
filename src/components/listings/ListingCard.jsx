@@ -29,6 +29,11 @@ function SellerHandle({ username }) {
 }
 
 export default function ListingCard({ listing }) {
+  const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+const isOnline = (ts) =>
+  ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false;
+
+
   const navigate = useNavigate();
 
   const verified = Boolean(listing?.seller?.isVerified);
@@ -116,6 +121,7 @@ export default function ListingCard({ listing }) {
   src={listing?.seller?.avatarUrl}
   alt={username ? `@${username}` : "Seller"}
   size={36}
+  online={isOnline(listing.seller?.lastActiveAt)}
 />
             </div>
 

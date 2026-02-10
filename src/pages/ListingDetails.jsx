@@ -30,6 +30,11 @@ function CommentAuthor({ username }) {
 }
 
 export default function ListingDetails() {
+  const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+const isOnline = (ts) =>
+  ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false;
+
+
   const { id } = useParams();
   const { user, authReady, openAuthModal } = useAuth();
   const { toast } = useToast();

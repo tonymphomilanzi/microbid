@@ -153,7 +153,7 @@ export default async function handler(req, res) {
         take: id ? 1 : 50,
         include: {
           author: {
-            select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true },
+            select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true },
           },
           _count: { select: { likes: true, comments: true } },
           ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
@@ -164,7 +164,7 @@ export default async function handler(req, res) {
                   take: 50,
                   include: {
                     author: {
-                      select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true },
+                      select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true },
                     },
                   },
                 },
@@ -310,7 +310,7 @@ export default async function handler(req, res) {
         const comment = await prisma.feedComment.create({
           data: { postId, authorId: decoded.uid, body: text },
           include: {
-            author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
+            author: { select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true } },
           },
         });
 
@@ -347,7 +347,7 @@ export default async function handler(req, res) {
           where: { id: commentId },
           data: { body: text },
           include: {
-            author: { select: { id: true, username: true, avatarUrl: true, isVerified: true, tier: true } },
+            author: { select: { id: true, username: true, avatarUrl: true,lastActiveAt: true, isVerified: true, tier: true } },
           },
         });
 
@@ -384,6 +384,26 @@ export default async function handler(req, res) {
           commentCount: counts?._count?.comments ?? 0,
         });
       }
+
+      //online offline status
+      // presence ping (update lastActiveAt)
+if (body.intent === "presencePing") {
+  await prisma.user.upsert({
+    where: { id: decoded.uid },
+    update: {
+      email: decoded.email ?? "unknown",
+      lastActiveAt: new Date(),
+    },
+    create: {
+      id: decoded.uid,
+      email: decoded.email ?? "unknown",
+      lastActiveAt: new Date(),
+    },
+    select: { id: true },
+  });
+
+  return res.status(200).json({ ok: true });
+}
 
       // upgrade request
       if (body.intent === "requestUpgrade") {

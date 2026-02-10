@@ -31,6 +31,7 @@ model User {
   username   String?  @unique
   avatarUrl String?  //
   createdAt DateTime @default(now())
+  lastActiveAt DateTime? //online offline
 
   role       UserRole  @default(USER)
   isVerified Boolean   @default(false)

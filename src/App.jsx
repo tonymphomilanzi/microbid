@@ -21,7 +21,11 @@ import AdminFeed from "./pages/admin/AdminFeed";
 import FeedPostDetails from "./pages/FeedPostDetails";
 import { Toaster } from "./components/ui/toaster";
 
+import usePresencePing from "./hooks/usePresencePing";
+
 export default function App() {
+  usePresencePing();
+  
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />

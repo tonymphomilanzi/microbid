@@ -56,5 +56,8 @@ requestUpgrade: (planName) =>
 
   setAvatar: (avatarUrl) =>
   api.post("/me", { intent: "setAvatar", avatarUrl }).then((r) => r.data),
+  
+  presencePing: () =>
+  api.post("/me", { intent: "presencePing" }).then((r) => r.data),
 };
 
