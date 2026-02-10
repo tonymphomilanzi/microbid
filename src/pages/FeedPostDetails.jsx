@@ -332,6 +332,13 @@ async function removeCommentConfirmed() {
               </div>
             </div>
 
+
+            {/* Body */}
+            <div className="whitespace-pre-wrap break-words text-sm text-muted-foreground leading-6">
+              {post.body}
+            </div>
+
+            
             {/* Action bar (Like | Comment | Share) */}
 
 
@@ -369,11 +376,6 @@ async function removeCommentConfirmed() {
     </button>
   </ShareSheet>
 </div>
-
-            {/* Body */}
-            <div className="whitespace-pre-wrap break-words text-sm text-muted-foreground leading-6">
-              {post.body}
-            </div>
           </CardContent>
         </Card>
 
