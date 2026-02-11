@@ -6,7 +6,7 @@ export const api = axios.create({
 });
 
 function getDeviceId() {
-  const key = "microbid_device_id"; // <- look for this in Local Storage
+  const key = "microbid_device_id";
   let id = localStorage.getItem(key);
 
   if (!id) {
@@ -20,14 +20,16 @@ function getDeviceId() {
 }
 
 api.interceptors.request.use(async (config) => {
-  // ✅Always attach device id (guest unique views)
+  config.headers = config.headers ?? {};
+
+  // ✅ always attach a stable device id
   try {
     config.headers["X-Device-Id"] = getDeviceId();
   } catch {
     // ignore
   }
 
-  // Attach auth token if logged in
+  // ✅ attach auth token if logged in
   const user = auth.currentUser;
   if (user) {
     const token = await user.getIdToken();

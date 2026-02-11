@@ -12,24 +12,66 @@ async function optionalAuthUid(req) {
   }
 }
 
-function viewerKeyFrom(req, uid) {
-  if (uid) return `u:${uid}`;
+function deviceIdFrom(req) {
   const did = String(req.headers["x-device-id"] || "").trim();
-  return did ? `d:${did}` : null;
+  return did || null;
 }
 
-// returns true if a NEW view row was created, false if already existed
-async function recordListingView(listingId, viewerKey) {
-  if (!viewerKey) return false;
+// returns true only if a NEW unique view was added
+async function recordListingViewSmart(listingId, uid, deviceId) {
+  const uKey = uid ? `u:${uid}` : null;
+  const dKey = deviceId ? `d:${deviceId}` : null;
 
-  try {
-    await prisma.listingView.create({ data: { listingId, viewerKey } });
-    return true;
-  } catch (e) {
-    // unique constraint => already viewed
-    if (e?.code === "P2002") return false;
-    throw e;
+  // Logged-in: upgrade device view -> user view
+  if (uKey) {
+    if (dKey) {
+      const existingDevice = await prisma.listingView.findUnique({
+        where: { listingId_viewerKey: { listingId, viewerKey: dKey } },
+        select: { id: true },
+      });
+
+      if (existingDevice) {
+        try {
+          await prisma.listingView.update({
+            where: { listingId_viewerKey: { listingId, viewerKey: dKey } },
+            data: { viewerKey: uKey },
+          });
+        } catch (e) {
+          // user view already exists => delete device view so it doesn't double count
+          if (e?.code === "P2002") {
+            await prisma.listingView
+              .delete({ where: { listingId_viewerKey: { listingId, viewerKey: dKey } } })
+              .catch(() => {});
+          } else {
+            throw e;
+          }
+        }
+        return false;
+      }
+    }
+
+    // no device view to upgrade => create user view if missing
+    try {
+      await prisma.listingView.create({ data: { listingId, viewerKey: uKey } });
+      return true;
+    } catch (e) {
+      if (e?.code === "P2002") return false;
+      throw e;
+    }
   }
+
+  // Guest: create device view if missing
+  if (dKey) {
+    try {
+      await prisma.listingView.create({ data: { listingId, viewerKey: dKey } });
+      return true;
+    } catch (e) {
+      if (e?.code === "P2002") return false;
+      throw e;
+    }
+  }
+
+  return false;
 }
 
 export default async function handler(req, res) {
@@ -40,8 +82,8 @@ export default async function handler(req, res) {
     if (!id) return res.status(400).json({ message: "Missing listing id" });
 
     if (req.method === "GET") {
-      const uid = await optionalAuthUid(req); // null if not logged in
-      const vKey = viewerKeyFrom(req, uid);
+      const uid = await optionalAuthUid(req);
+      const deviceId = deviceIdFrom(req);
 
       const listing = await prisma.listing.findUnique({
         where: { id },
@@ -57,10 +99,7 @@ export default async function handler(req, res) {
             },
           },
           category: true,
-
           _count: { select: { likes: true, comments: true, views: true } },
-
-          // likedByMe (only if logged in)
           ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
         },
       });
@@ -68,12 +107,12 @@ export default async function handler(req, res) {
       if (!listing) return res.status(404).json({ message: "Not found" });
 
       // record unique view (don’t count seller’s own view)
-      let createdView = false;
-      if (!(uid && uid === listing.sellerId)) {
-        createdView = await recordListingView(id, vKey);
-      }
+      const createdView =
+        !(uid && uid === listing.sellerId)
+          ? await recordListingViewSmart(id, uid, deviceId)
+          : false;
 
-      // Ensure images always exists in response (backward compatibility)
+      // Ensure images always exists in response
       const images =
         Array.isArray(listing.images) && listing.images.length
           ? listing.images
@@ -81,21 +120,18 @@ export default async function handler(req, res) {
             ? [listing.image]
             : [];
 
-      const baseViewCount = listing._count?.views ?? 0;
-      const viewCount = createdView ? baseViewCount + 1 : baseViewCount;
+      const baseViews = listing._count?.views ?? 0;
+      const viewCount = createdView ? baseViews + 1 : baseViews;
 
       const safeListing = {
         ...listing,
         images,
-
         likeCount: listing._count?.likes ?? 0,
         commentCount: listing._count?.comments ?? 0,
-        viewCount, // include views
-
+        viewCount,
         likedByMe: uid ? (listing.likes?.length ?? 0) > 0 : false,
       };
 
-      // remove prisma internal fields from response
       delete safeListing._count;
       if (safeListing.likes) delete safeListing.likes;
 
