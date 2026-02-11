@@ -83,29 +83,43 @@ export default async function handler(req, res) {
 
 
     // GET /api/listings?public=listingBids&listingId=...
+
 if (req.method === "GET" && req.query?.public === "listingBids") {
   const listingId = String(req.query?.listingId || "");
   if (!listingId) return res.status(400).json({ message: "listingId is required" });
 
   const bids = await prisma.listingBid.findMany({
     where: { listingId },
-    orderBy: { amount: "desc" }, // show highest first
+    orderBy: [{ amount: "desc" }, { createdAt: "desc" }], //  stable ordering
     take: 50,
     include: {
-      bidder: { select: { id: true, username: true, avatarUrl: true, lastActiveAt: true, tier: true, isVerified: true } },
+      bidder: {
+        select: {
+          id: true,
+          username: true,
+          avatarUrl: true,
+          lastActiveAt: true,
+          tier: true,
+          isVerified: true,
+        },
+      },
     },
   });
 
   const agg = await prisma.listingBid.aggregate({
     where: { listingId },
     _max: { amount: true },
-    _count: true,
+    _count: { _all: true }, //  correct
   });
+
+  const highestBid = agg._max?.amount ?? 0;
+  const bidCount = agg._count?._all ?? 0;
 
   return res.status(200).json({
     bids,
-    bidCount: agg._count ?? 0,
-    highestBid: agg._max?.amount ?? 0,
+    bidCount,
+    highestBid,
+    minNextBid: highestBid + 1, // optional but useful for UI
   });
 }
 
@@ -187,7 +201,7 @@ if (req.method === "GET" && req.query?.public === "listingBids") {
       const body = readJson(req);
 
 
-  if (body.intent === "addListingBid") {
+if (body.intent === "addListingBid") {
   const listingId = String(body.listingId || "");
   const amount = Number(body.amount);
 
@@ -218,7 +232,7 @@ if (req.method === "GET" && req.query?.public === "listingBids") {
 
     const highest = top?.amount ?? 0;
 
-    // rule you chose: must be greater than both listing price and highest bid
+    // ✅ must be greater than BOTH listing.price and highest bid
     const minAllowed = Math.max(listing.price, highest) + 1;
 
     if (amount < minAllowed) {
@@ -246,14 +260,17 @@ if (req.method === "GET" && req.query?.public === "listingBids") {
     const agg = await tx.listingBid.aggregate({
       where: { listingId },
       _max: { amount: true },
-      _count: true,
+      _count: { _all: true }, //  correct
     });
+
+    const highestBid = agg._max?.amount ?? amount;
+    const bidCount = agg._count?._all ?? 1;
 
     return {
       bid,
-      highestBid: agg._max?.amount ?? amount,
-      bidCount: agg._count ?? 1,
-      minNextBid: (agg._max?.amount ?? amount) + 1,
+      highestBid,
+      bidCount,
+      minNextBid: highestBid + 1,
     };
   });
 

@@ -7,6 +7,16 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../components/ui/drawer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { useAuth } from "../context/AuthContext";
 import { listingsService } from "../services/listings.service";
 import {
@@ -18,6 +28,7 @@ import {
   Share2,
   Send,
   Gavel,
+  AlertTriangle,
 } from "lucide-react";
 import ChatDialog from "../components/chat/ChatDialog";
 import ShareSheet from "../components/shared/ShareSheet";
@@ -59,7 +70,7 @@ export default function ListingDetails() {
   // Gallery
   const [activeImage, setActiveImage] = useState("");
 
-  // Like/comment counts
+  // Like/comment
   const [likedByMe, setLikedByMe] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [commentCount, setCommentCount] = useState(0);
@@ -72,7 +83,7 @@ export default function ListingDetails() {
   const [commentSending, setCommentSending] = useState(false);
   const commentRef = useRef(null);
 
-  // Bids drawer
+  // Bids drawer + summary
   const [bidsOpen, setBidsOpen] = useState(false);
   const [bidsLoading, setBidsLoading] = useState(false);
   const [bids, setBids] = useState([]);
@@ -80,6 +91,12 @@ export default function ListingDetails() {
   const [bidSending, setBidSending] = useState(false);
   const [highestBid, setHighestBid] = useState(0);
   const [bidCount, setBidCount] = useState(0);
+  const [topBidder, setTopBidder] = useState(null); // bidder object
+  const [myTopBid, setMyTopBid] = useState(0);
+
+  // Confirm bid dialog
+  const [confirmBidOpen, setConfirmBidOpen] = useState(false);
+  const [pendingBidAmount, setPendingBidAmount] = useState(0);
 
   const actionBtn =
     "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
@@ -122,14 +139,28 @@ export default function ListingDetails() {
         setLikeCount(Number(listing?.likeCount ?? 0));
         setCommentCount(Number(listing?.commentCount ?? 0));
 
-        // optional: preload bid summary (does not open drawer)
+        // preload bid summary (top bidder/highest/count) without opening drawer
         try {
-          const bidRes = await listingsService.listListingBids(id);
+          const res = await listingsService.listListingBids(id);
           if (!mounted) return;
-          setHighestBid(Number(bidRes.highestBid ?? 0));
-          setBidCount(Number(bidRes.bidCount ?? 0));
+
+          const list = res.bids ?? [];
+          setHighestBid(Number(res.highestBid ?? 0));
+          setBidCount(Number(res.bidCount ?? 0));
+          setTopBidder(list[0]?.bidder ?? null);
+
+          if (user?.uid) {
+            const mine = list.reduce((max, b) => {
+              const bidderId = b?.bidderId || b?.bidder?.id;
+              if (bidderId !== user.uid) return max;
+              return Math.max(max, Number(b.amount || 0));
+            }, 0);
+            setMyTopBid(mine);
+          } else {
+            setMyTopBid(0);
+          }
         } catch {
-          // ignore
+          // ignore if bids endpoint not ready
         }
       } catch (e) {
         const msg = e?.response?.data?.message || e.message || "Failed to load listing";
@@ -152,6 +183,12 @@ export default function ListingDetails() {
   const shareUrl = useMemo(() => `${window.location.origin}/listings/${id}`, [id]);
 
   const isOwner = Boolean(user && listing?.sellerId === user.uid);
+
+  const minBid = useMemo(() => {
+    const price = Number(listing?.price ?? 0);
+    const hb = Number(highestBid ?? 0);
+    return Math.max(price, hb) + 1;
+  }, [listing?.price, highestBid]);
 
   async function onToggleLike() {
     if (!user) return needLoginToast();
@@ -223,9 +260,25 @@ export default function ListingDetails() {
     setBidsLoading(true);
     try {
       const res = await listingsService.listListingBids(id);
-      setBids(res.bids ?? []);
-      setHighestBid(Number(res.highestBid ?? 0));
+
+      const list = res.bids ?? [];
+      setBids(list);
+
+      const hb = Number(res.highestBid ?? 0);
+      setHighestBid(hb);
       setBidCount(Number(res.bidCount ?? 0));
+      setTopBidder(list[0]?.bidder ?? null);
+
+      if (user?.uid) {
+        const mine = list.reduce((max, b) => {
+          const bidderId = b?.bidderId || b?.bidder?.id;
+          if (bidderId !== user.uid) return max;
+          return Math.max(max, Number(b.amount || 0));
+        }, 0);
+        setMyTopBid(mine);
+      } else {
+        setMyTopBid(0);
+      }
     } catch (e) {
       toast({
         title: "Could not load bids",
@@ -236,7 +289,7 @@ export default function ListingDetails() {
     }
   }
 
-  async function sendBid() {
+  function requestBidConfirm() {
     if (!user) return needLoginToast();
     if (isOwner) {
       toast({ title: "Not allowed", description: "You cannot bid on your own listing." });
@@ -249,22 +302,38 @@ export default function ListingDetails() {
       return;
     }
 
-    setBidSending(true);
-    try {
-      const res = await listingsService.addListingBid(id, amt);
+    setPendingBidAmount(amt);
+    setConfirmBidOpen(true);
+  }
 
-      setHighestBid(Number(res.highestBid ?? amt));
+  async function sendBidConfirmed(amount) {
+    setConfirmBidOpen(false);
+    setBidSending(true);
+
+    try {
+      const res = await listingsService.addListingBid(id, amount);
+
+      const newHighest = Number(res.highestBid ?? amount);
+      setHighestBid(newHighest);
       setBidCount(Number(res.bidCount ?? (bidCount + 1)));
+
+      if (user?.uid) setMyTopBid((prev) => Math.max(prev, amount));
 
       setBids((prev) => {
         const next = [res.bid, ...prev];
         next.sort(
-          (a, b) => (b.amount - a.amount) || (new Date(b.createdAt) - new Date(a.createdAt))
+          (a, b) =>
+            (Number(b.amount || 0) - Number(a.amount || 0)) ||
+            (new Date(b.createdAt) - new Date(a.createdAt))
         );
         return next.slice(0, 50);
       });
 
+      // update top bidder quickly (best-effort)
+      if (res?.bid?.bidder) setTopBidder(res.bid.bidder);
+
       setBidAmount("");
+      toast({ title: "Bid placed", description: `You bid $${amount}.` });
     } catch (e) {
       toast({
         title: "Bid failed",
@@ -320,8 +389,6 @@ export default function ListingDetails() {
   const m = listing.metrics || {};
   const verified = Boolean(listing?.seller?.isVerified);
   const username = listing?.seller?.username || "";
-
-  const minBid = Math.max(Number(listing.price || 0), Number(highestBid || 0)) + 1;
 
   return (
     <PageContainer>
@@ -402,10 +469,7 @@ export default function ListingDetails() {
                     />
                     <SellerHandle username={username} />
                     {verified ? (
-                      <span
-                        className="inline-flex items-center gap-1 text-xs text-primary"
-                        title="Verified seller"
-                      >
+                      <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
                         <BadgeCheck className="h-4 w-4" />
                         Verified
                       </span>
@@ -450,8 +514,8 @@ export default function ListingDetails() {
               </Card>
             </div>
 
-            {/* Like | Comment | Bid | Share */}
-            <div className="grid grid-cols-4 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
+            {/* Like | Comment | Share */}
+            <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
               <button type="button" className={actionBtn} onClick={onToggleLike}>
                 <Heart
                   className={[
@@ -471,20 +535,7 @@ export default function ListingDetails() {
                 <span className="font-medium">{commentCount}</span>
               </button>
 
-              <button
-                type="button"
-                className={`${actionBtn} border-r border-border/60`}
-                onClick={openBids}
-              >
-                <Gavel className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{bidCount}</span>
-              </button>
-
-              <ShareSheet
-                url={shareUrl}
-                title={listing.title}
-                text={(listing.description || "").slice(0, 120)}
-              >
+              <ShareSheet url={shareUrl} title={listing.title} text={(listing.description || "").slice(0, 120)}>
                 <button type="button" className={actionBtn}>
                   <Share2 className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium">Share</span>
@@ -492,14 +543,38 @@ export default function ListingDetails() {
               </ShareSheet>
             </div>
 
+            {/* Bid summary + outbid notice */}
             <div className="text-xs text-muted-foreground">
-              Highest bid:{" "}
+              Top bidder:{" "}
               <span className="font-semibold text-foreground">
-                ${highestBid || 0}
+                {topBidder?.username ? `@${topBidder.username}` : "—"}
               </span>{" "}
+              • Highest bid:{" "}
+              <span className="font-semibold text-foreground">${highestBid || 0}</span>{" "}
               • Minimum next bid:{" "}
               <span className="font-semibold text-foreground">${minBid}</span>
             </div>
+
+            {user && myTopBid > 0 && myTopBid < highestBid ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  You have been outbid.
+                </div>
+              </div>
+            ) : null}
+
+            {/* Place bid button (separate yellow) */}
+            <Button
+              type="button"
+              onClick={openBids}
+              className="w-full bg-yellow-400 text-black hover:bg-yellow-500"
+              disabled={isOwner}
+              title={isOwner ? "You cannot bid on your own listing" : "Place a bid"}
+            >
+              <Gavel className="mr-2 h-4 w-4" />
+              Place bid
+            </Button>
 
             {/* Buy + Message */}
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -524,7 +599,7 @@ export default function ListingDetails() {
 
         <ChatDialog open={chatOpen} onOpenChange={setChatOpen} currentUser={user} listing={listing} />
 
-        {/* Comments drawer */}
+        {/* Comments bottom sheet */}
         <Drawer open={commentsOpen} onOpenChange={setCommentsOpen}>
           <DrawerContent className="max-h-[85vh]">
             <div className="mx-auto w-full max-w-2xl px-4 pb-4">
@@ -618,7 +693,7 @@ export default function ListingDetails() {
           </DrawerContent>
         </Drawer>
 
-        {/* Bids drawer */}
+        {/* Bids bottom sheet */}
         <Drawer open={bidsOpen} onOpenChange={setBidsOpen}>
           <DrawerContent className="max-h-[85vh]">
             <div className="mx-auto w-full max-w-2xl px-4 pb-4">
@@ -638,40 +713,56 @@ export default function ListingDetails() {
                       No bids yet. Be the first.
                     </div>
                   ) : (
-                    bids.map((b) => (
-                      <div key={b.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 text-sm">
-                            <UserAvatar
-                              src={b.bidder?.avatarUrl}
-                              alt={b.bidder?.username ? `@${b.bidder.username}` : "User"}
-                              size={32}
-                              online={isOnline(b.bidder?.lastActiveAt)}
-                            />
-                            <span className="font-medium">
-                              {b.bidder?.username ? (
-                                `@${b.bidder.username}`
-                              ) : (
-                                <span className="select-none blur-[3px]">@private_user</span>
-                              )}
-                            </span>
+                    bids.map((b) => {
+                      const leading = Number(b.amount || 0) === Number(highestBid || 0);
+                      return (
+                        <div
+                          key={b.id}
+                          className={[
+                            "rounded-xl border p-3",
+                            leading
+                              ? "border-yellow-400/50 bg-yellow-400/10 ring-1 ring-yellow-400/30"
+                              : "border-border/60 bg-muted/10",
+                          ].join(" ")}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <UserAvatar
+                                src={b.bidder?.avatarUrl}
+                                alt={b.bidder?.username ? `@${b.bidder.username}` : "User"}
+                                size={32}
+                                online={isOnline(b.bidder?.lastActiveAt)}
+                              />
+                              <span className="font-medium">
+                                {b.bidder?.username ? (
+                                  `@${b.bidder.username}`
+                                ) : (
+                                  <span className="select-none blur-[3px]">@private_user</span>
+                                )}
+                              </span>
+
+                              {leading ? (
+                                <span className="ml-2 rounded-full bg-yellow-400 px-2 py-0.5 text-[11px] font-semibold text-black">
+                                  Leading
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="text-sm font-semibold">${b.amount}</div>
                           </div>
 
-                          <div className="text-sm font-semibold">${b.amount}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {b.createdAt ? new Date(b.createdAt).toLocaleString() : ""}
+                          </div>
                         </div>
-
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {b.createdAt ? new Date(b.createdAt).toLocaleString() : ""}
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 
                 <div className="mt-3 rounded-2xl border border-border/60 bg-card/60 p-3">
                   <div className="text-xs text-muted-foreground mb-2">
-                    Minimum bid:{" "}
-                    <span className="font-semibold text-foreground">${minBid}</span>
+                    Minimum bid: <span className="font-semibold text-foreground">${minBid}</span>
                   </div>
 
                   <div className="flex items-end gap-2">
@@ -684,7 +775,7 @@ export default function ListingDetails() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          sendBid();
+                          requestBidConfirm();
                         }
                       }}
                     />
@@ -694,7 +785,7 @@ export default function ListingDetails() {
                       size="icon"
                       className="h-11 w-11 shrink-0 rounded-full"
                       disabled={!user || bidSending}
-                      onClick={sendBid}
+                      onClick={requestBidConfirm}
                       aria-label="Place bid"
                       title="Place bid"
                     >
@@ -728,6 +819,31 @@ export default function ListingDetails() {
             </div>
           </DrawerContent>
         </Drawer>
+
+        {/* Confirm bid dialog */}
+        <AlertDialog open={confirmBidOpen} onOpenChange={setConfirmBidOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm your bid</AlertDialogTitle>
+              <AlertDialogDescription>
+                By placing this bid, you agree that you are committed to buy this listing if you win.
+                <div className="mt-2 text-sm">
+                  Bid amount: <span className="font-semibold">${pendingBidAmount}</span>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={bidSending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={bidSending}
+                onClick={() => sendBidConfirmed(pendingBidAmount)}
+              >
+                {bidSending ? "Placing..." : "Yes, place bid"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </PageContainer>
   );
