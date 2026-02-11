@@ -51,6 +51,9 @@ export default async function handler(req, res) {
     // -------------------------
     // GET /api/listings?public=listingComments&listingId=...
     // -------------------------
+
+
+    
     if (req.method === "GET" && req.query?.public === "listingComments") {
       const listingId = String(req.query?.listingId || "");
       if (!listingId) return res.status(400).json({ message: "listingId is required" });
@@ -77,6 +80,34 @@ export default async function handler(req, res) {
 
       return res.status(200).json({ comments, commentCount });
     }
+
+
+    // GET /api/listings?public=listingBids&listingId=...
+if (req.method === "GET" && req.query?.public === "listingBids") {
+  const listingId = String(req.query?.listingId || "");
+  if (!listingId) return res.status(400).json({ message: "listingId is required" });
+
+  const bids = await prisma.listingBid.findMany({
+    where: { listingId },
+    orderBy: { amount: "desc" }, // show highest first
+    take: 50,
+    include: {
+      bidder: { select: { id: true, username: true, avatarUrl: true, lastActiveAt: true, tier: true, isVerified: true } },
+    },
+  });
+
+  const agg = await prisma.listingBid.aggregate({
+    where: { listingId },
+    _max: { amount: true },
+    _count: true,
+  });
+
+  return res.status(200).json({
+    bids,
+    bidCount: agg._count ?? 0,
+    highestBid: agg._max?.amount ?? 0,
+  });
+}
 
     // -------------------------
     // GET /api/listings (public)
@@ -155,6 +186,79 @@ export default async function handler(req, res) {
       const decoded = await requireAuth(req);
       const body = readJson(req);
 
+
+  if (body.intent === "addListingBid") {
+  const listingId = String(body.listingId || "");
+  const amount = Number(body.amount);
+
+  if (!listingId) return res.status(400).json({ message: "Missing listingId" });
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ message: "Invalid bid amount" });
+  }
+
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { id: true, sellerId: true, status: true, price: true },
+  });
+
+  if (!listing || listing.status !== "ACTIVE") {
+    return res.status(404).json({ message: "Listing not available" });
+  }
+
+  if (listing.sellerId === decoded.uid) {
+    return res.status(403).json({ message: "You cannot bid on your own listing." });
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const top = await tx.listingBid.findFirst({
+      where: { listingId },
+      orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
+      select: { amount: true },
+    });
+
+    const highest = top?.amount ?? 0;
+
+    // rule you chose: must be greater than both listing price and highest bid
+    const minAllowed = Math.max(listing.price, highest) + 1;
+
+    if (amount < minAllowed) {
+      const err = new Error(`Bid must be at least $${minAllowed}.`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const bid = await tx.listingBid.create({
+      data: { listingId, bidderId: decoded.uid, amount },
+      include: {
+        bidder: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+            lastActiveAt: true,
+            isVerified: true,
+            tier: true,
+          },
+        },
+      },
+    });
+
+    const agg = await tx.listingBid.aggregate({
+      where: { listingId },
+      _max: { amount: true },
+      _count: true,
+    });
+
+    return {
+      bid,
+      highestBid: agg._max?.amount ?? amount,
+      bidCount: agg._count ?? 1,
+      minNextBid: (agg._max?.amount ?? amount) + 1,
+    };
+  });
+
+  return res.status(201).json(result);
+}
       // Intent: toggle like
       if (body.intent === "toggleListingLike") {
         const listingId = String(body.listingId || "");

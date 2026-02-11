@@ -59,5 +59,11 @@ requestUpgrade: (planName) =>
   
   presencePing: () =>
   api.post("/me", { intent: "presencePing" }).then((r) => r.data),
+
+  listListingBids: (listingId) =>
+  api.get("/listings", { params: { public: "listingBids", listingId } }).then((r) => r.data),
+
+addListingBid: (listingId, amount) =>
+  api.post("/listings", { intent: "addListingBid", listingId, amount }).then((r) => r.data),
 };
 

@@ -59,6 +59,9 @@ model User {
 
   listingLikes     ListingLike[]
   listingComments  ListingComment[]
+
+  listingBids ListingBid[]
+
 }
 
 
@@ -119,6 +122,7 @@ model Listing {
   comments  ListingComment[]
 
   views ListingView[]
+  bids ListingBid[]
 }
 
 model Purchase {
@@ -509,4 +513,23 @@ model FeedPostView {
   @@unique([postId, viewerKey])
   @@index([postId])
   @@index([viewerKey])
+}
+
+//bidding
+
+model ListingBid {
+  id        String   @id @default(cuid())
+
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  bidderId  String
+  bidder    User     @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([listingId, createdAt])
+  @@index([bidderId])
+  @@index([listingId, amount])
 }
