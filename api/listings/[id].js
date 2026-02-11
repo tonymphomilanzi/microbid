@@ -17,12 +17,11 @@ function deviceIdFrom(req) {
   return did || null;
 }
 
-// returns true only if a NEW unique view was added
+// Smart merge: device view -> user view (prevents double count on refresh)
 async function recordListingViewSmart(listingId, uid, deviceId) {
   const uKey = uid ? `u:${uid}` : null;
   const dKey = deviceId ? `d:${deviceId}` : null;
 
-  // Logged-in: upgrade device view -> user view
   if (uKey) {
     if (dKey) {
       const existingDevice = await prisma.listingView.findUnique({
@@ -37,7 +36,6 @@ async function recordListingViewSmart(listingId, uid, deviceId) {
             data: { viewerKey: uKey },
           });
         } catch (e) {
-          // user view already exists => delete device view so it doesn't double count
           if (e?.code === "P2002") {
             await prisma.listingView
               .delete({ where: { listingId_viewerKey: { listingId, viewerKey: dKey } } })
@@ -50,7 +48,6 @@ async function recordListingViewSmart(listingId, uid, deviceId) {
       }
     }
 
-    // no device view to upgrade => create user view if missing
     try {
       await prisma.listingView.create({ data: { listingId, viewerKey: uKey } });
       return true;
@@ -60,7 +57,6 @@ async function recordListingViewSmart(listingId, uid, deviceId) {
     }
   }
 
-  // Guest: create device view if missing
   if (dKey) {
     try {
       await prisma.listingView.create({ data: { listingId, viewerKey: dKey } });
@@ -106,13 +102,11 @@ export default async function handler(req, res) {
 
       if (!listing) return res.status(404).json({ message: "Not found" });
 
-      // record unique view (don’t count seller’s own view)
       const createdView =
         !(uid && uid === listing.sellerId)
           ? await recordListingViewSmart(id, uid, deviceId)
           : false;
 
-      // Ensure images always exists in response
       const images =
         Array.isArray(listing.images) && listing.images.length
           ? listing.images

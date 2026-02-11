@@ -67,7 +67,7 @@ function deviceIdFrom(req) {
   return did || null;
 }
 
-// returns true only if NEW unique view added
+// ✅ Smart merge: device view -> user view (prevents double count on refresh)
 async function recordFeedViewSmart(postId, uid, deviceId) {
   const uKey = uid ? `u:${uid}` : null;
   const dKey = deviceId ? `d:${deviceId}` : null;
@@ -94,13 +94,13 @@ async function recordFeedViewSmart(postId, uid, deviceId) {
             throw e;
           }
         }
-        return false;
+        return false; // no new unique view
       }
     }
 
     try {
       await prisma.feedPostView.create({ data: { postId, viewerKey: uKey } });
-      return true;
+      return true; // new unique view
     } catch (e) {
       if (e?.code === "P2002") return false;
       throw e;
@@ -122,7 +122,7 @@ async function recordFeedViewSmart(postId, uid, deviceId) {
 
 export default async function handler(req, res) {
   try {
-    // PUBLIC username availability
+    // PUBLIC: username availability check
     const check = q1(req.query?.checkUsername);
     if (req.method === "GET" && check) {
       const normalized = normalizeUsername(check);
@@ -162,7 +162,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ available, normalized, suggestions });
     }
 
-    // PUBLIC plans
+    // PUBLIC: plans list
     if (req.method === "GET" && q1(req.query?.public) === "plans") {
       const plans = await prisma.plan.findMany({
         where: { isActive: true },
@@ -171,7 +171,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ plans });
     }
 
-    // ✅ PUBLIC feed list or single post (+ views)
+    // PUBLIC: feed list OR single post (+ unique views)
     if (req.method === "GET" && q1(req.query?.public) === "feed") {
       const id = String(q1(req.query?.id) || "");
       const q = String(q1(req.query?.q) || "");
@@ -200,7 +200,14 @@ export default async function handler(req, res) {
         take: id ? 1 : 50,
         include: {
           author: {
-            select: { id: true, username: true, avatarUrl: true, lastActiveAt: true, isVerified: true, tier: true },
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true,
+              lastActiveAt: true,
+              isVerified: true,
+              tier: true,
+            },
           },
           _count: { select: { likes: true, comments: true, views: true } },
           ...(uid ? { likes: { where: { userId: uid }, select: { id: true } } } : {}),
@@ -211,7 +218,14 @@ export default async function handler(req, res) {
                   take: 50,
                   include: {
                     author: {
-                      select: { id: true, username: true, avatarUrl: true, lastActiveAt: true, isVerified: true, tier: true },
+                      select: {
+                        id: true,
+                        username: true,
+                        avatarUrl: true,
+                        lastActiveAt: true,
+                        isVerified: true,
+                        tier: true,
+                      },
                     },
                   },
                 },
@@ -220,7 +234,7 @@ export default async function handler(req, res) {
         },
       });
 
-      // record unique view only for details fetch
+      // ✅ record view only when requesting a single post
       const createdView = id ? await recordFeedViewSmart(id, uid, deviceId) : false;
 
       const posts = postsRaw.map((post) => {
@@ -244,7 +258,7 @@ export default async function handler(req, res) {
     // Everything else requires auth
     const decoded = await requireAuth(req);
 
-    // AUTH feed unread
+    // AUTH: feed unread count
     if (req.method === "GET" && q1(req.query?.feedUnread) === "1") {
       const u = await prisma.user.findUnique({
         where: { id: decoded.uid },
@@ -259,7 +273,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ unreadFeedCount });
     }
 
-    // AUTH dashboard payload
+    // AUTH: main dashboard payload
     if (req.method === "GET") {
       const user = await prisma.user.upsert({
         where: { id: decoded.uid },
@@ -299,21 +313,217 @@ export default async function handler(req, res) {
       return res.status(200).json({ user, plans, currentPlan, usage, pendingUpgradeRequest });
     }
 
-    // POST intents (keep your existing ones)
+    // AUTH: POST intents
     if (req.method === "POST") {
       const body = readJson(req);
 
-      // role lookup (admin delete)
       const dbUserRole = await prisma.user.findUnique({
         where: { id: decoded.uid },
         select: { role: true },
       });
       const isAdmin = dbUserRole?.role === "ADMIN";
 
-      // ... keep ALL your existing intents here unchanged ...
-      // (markFeedSeen, toggleFeedLike, add/edit/delete comments, presencePing, requestUpgrade, setAvatar, setUsername)
+      if (body.intent === "markFeedSeen") {
+        await prisma.user.update({
+          where: { id: decoded.uid },
+          data: { lastFeedSeenAt: new Date() },
+        });
+        return res.status(200).json({ ok: true });
+      }
 
-      // If you want, paste your POST block and I’ll merge it cleanly here.
+      if (body.intent === "toggleFeedLike") {
+        const postId = String(body.postId || "");
+        if (!postId) return res.status(400).json({ message: "postId is required" });
+
+        const where = { postId_userId: { postId, userId: decoded.uid } };
+        const existing = await prisma.feedPostLike.findUnique({ where });
+
+        if (existing) await prisma.feedPostLike.delete({ where });
+        else await prisma.feedPostLike.create({ data: { postId, userId: decoded.uid } });
+
+        const counts = await prisma.feedPost.findUnique({
+          where: { id: postId },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
+        });
+
+        return res.status(200).json({
+          liked: !existing,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0,
+        });
+      }
+
+      if (body.intent === "addFeedComment") {
+        const postId = String(body.postId || "");
+        const text = String(body.body || "").trim();
+
+        if (!postId) return res.status(400).json({ message: "postId is required" });
+        if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+
+        const comment = await prisma.feedComment.create({
+          data: { postId, authorId: decoded.uid, body: text },
+          include: {
+            author: {
+              select: { id: true, username: true, avatarUrl: true, lastActiveAt: true, isVerified: true, tier: true },
+            },
+          },
+        });
+
+        const counts = await prisma.feedPost.findUnique({
+          where: { id: postId },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
+        });
+
+        return res.status(201).json({
+          comment,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0,
+        });
+      }
+
+      if (body.intent === "editFeedComment") {
+        const commentId = String(body.commentId || "");
+        const text = String(body.body || "").trim();
+
+        if (!commentId) return res.status(400).json({ message: "commentId is required" });
+        if (!text) return res.status(400).json({ message: "Comment cannot be empty" });
+
+        const existing = await prisma.feedComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, authorId: true },
+        });
+
+        if (!existing) return res.status(404).json({ message: "Comment not found" });
+        if (existing.authorId !== decoded.uid) return res.status(403).json({ message: "Not allowed" });
+
+        const comment = await prisma.feedComment.update({
+          where: { id: commentId },
+          data: { body: text },
+          include: {
+            author: {
+              select: { id: true, username: true, avatarUrl: true, lastActiveAt: true, isVerified: true, tier: true },
+            },
+          },
+        });
+
+        return res.status(200).json({ comment });
+      }
+
+      if (body.intent === "deleteFeedComment") {
+        const commentId = String(body.commentId || "");
+        if (!commentId) return res.status(400).json({ message: "commentId is required" });
+
+        const existing = await prisma.feedComment.findUnique({
+          where: { id: commentId },
+          select: { id: true, authorId: true, postId: true },
+        });
+
+        if (!existing) return res.status(404).json({ message: "Comment not found" });
+
+        const canDelete = existing.authorId === decoded.uid || isAdmin;
+        if (!canDelete) return res.status(403).json({ message: "Not allowed" });
+
+        await prisma.feedComment.delete({ where: { id: commentId } });
+
+        const counts = await prisma.feedPost.findUnique({
+          where: { id: existing.postId },
+          select: { _count: { select: { likes: true, comments: true, views: true } } },
+        });
+
+        return res.status(200).json({
+          ok: true,
+          commentId,
+          postId: existing.postId,
+          likeCount: counts?._count?.likes ?? 0,
+          commentCount: counts?._count?.comments ?? 0,
+          viewCount: counts?._count?.views ?? 0,
+        });
+      }
+
+      if (body.intent === "presencePing") {
+        await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { email: decoded.email ?? "unknown", lastActiveAt: new Date() },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown", lastActiveAt: new Date() },
+          select: { id: true },
+        });
+        return res.status(200).json({ ok: true });
+      }
+
+      if (body.intent === "requestUpgrade") {
+        const planName = String(body.planName || "").toUpperCase();
+        if (!["PRO", "VIP"].includes(planName)) {
+          return res.status(400).json({ message: "Invalid plan. Only PRO or VIP upgrades allowed." });
+        }
+
+        const plan = await prisma.plan.findUnique({ where: { name: planName } });
+        if (!plan || !plan.isActive) return res.status(400).json({ message: "Plan not available." });
+
+        const dbUser = await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { email: decoded.email ?? "unknown" },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown" },
+          select: { id: true, tier: true },
+        });
+
+        if (dbUser.tier === planName) {
+          return res.status(400).json({ message: "You are already on this plan." });
+        }
+
+        const existingPending = await prisma.upgradeRequest.findFirst({
+          where: { userId: dbUser.id, status: "PENDING" },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (existingPending) {
+          return res.status(409).json({ message: "You already have a pending upgrade request." });
+        }
+
+        const created = await prisma.upgradeRequest.create({
+          data: { userId: dbUser.id, requestedPlan: planName, status: "PENDING" },
+        });
+
+        return res.status(201).json({ request: created });
+      }
+
+      if (body.intent === "setAvatar") {
+        const url = String(body.avatarUrl || "").trim();
+        const avatarUrl = url ? url : null;
+
+        const updated = await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { email: decoded.email ?? "unknown", avatarUrl },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown", avatarUrl },
+          select: { id: true, email: true, username: true, avatarUrl: true, role: true, tier: true, isVerified: true },
+        });
+
+        return res.status(200).json({ user: updated });
+      }
+
+      if (body.username || body.intent === "setUsername") {
+        const normalized = normalizeUsername(body.username);
+
+        if (!isValidUsername(normalized)) {
+          return res.status(400).json({
+            message: "Invalid username. Use 3-20 chars: a-z, 0-9, underscore.",
+          });
+        }
+
+        const available = await usernameAvailable(normalized, decoded.uid);
+        if (!available) return res.status(409).json({ message: "Username is already taken." });
+
+        const updated = await prisma.user.upsert({
+          where: { id: decoded.uid },
+          update: { username: normalized, email: decoded.email ?? "unknown" },
+          create: { id: decoded.uid, email: decoded.email ?? "unknown", username: normalized },
+          select: { id: true, email: true, username: true, avatarUrl: true, role: true, tier: true, isVerified: true },
+        });
+
+        return res.status(200).json({ user: updated });
+      }
+
       return res.status(400).json({ message: "Unknown action" });
     }
 

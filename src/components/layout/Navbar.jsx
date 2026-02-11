@@ -4,16 +4,14 @@ import { Button } from "../ui/button";
 import {
   HomeIcon,
   ShoppingBagIcon,
-  Squares2X2Icon,
   ArrowRightOnRectangleIcon,
-  ShieldCheckIcon,
   BellIcon,
   UserCircleIcon,
   NewspaperIcon,
 } from "@heroicons/react/24/outline";
 
 export default function Navbar() {
-  const { user, openAuthModal, unreadChats, unreadFeed, isAdmin } = useAuth();
+  const { user, authLoading, openAuthModal, unreadChats, unreadFeed, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -49,7 +47,6 @@ export default function Navbar() {
             <span className="hidden sm:inline">Marketplace</span>
           </NavLink>
 
-          {/* Feed */}
           <NavLink
             to="/feed"
             className={({ isActive }) =>
@@ -60,8 +57,6 @@ export default function Navbar() {
           >
             <div className="relative">
               <NewspaperIcon className="h-5 w-5" />
-
-              {/* only show feed badge when logged in */}
               {user && unreadFeed > 0 ? (
                 <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
                   {unreadFeed > 99 ? "99+" : unreadFeed}
@@ -70,14 +65,14 @@ export default function Navbar() {
             </div>
             <span className="hidden sm:inline">Feed</span>
           </NavLink>
-
-       
         </nav>
 
         <div className="flex items-center gap-2">
-          {user ? (
+          {authLoading ? (
+            // ✅ prevents "Login flash" while Firebase restores session
+            <div className="h-10 w-24 rounded-md bg-muted/40" />
+          ) : user ? (
             <>
-              {/* Chat bell */}
               <button
                 onClick={() => navigate("/dashboard?tab=inbox")}
                 className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
@@ -92,7 +87,6 @@ export default function Navbar() {
                 )}
               </button>
 
-              {/* Dashboard shortcut */}
               <button
                 onClick={() => navigate("/dashboard")}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
@@ -102,7 +96,6 @@ export default function Navbar() {
                 <UserCircleIcon className="h-6 w-6" />
               </button>
 
-              {/* Admin shortcut */}
               {isAdmin ? (
                 <button
                   onClick={() => navigate("/admin")}

@@ -22,14 +22,14 @@ function getDeviceId() {
 api.interceptors.request.use(async (config) => {
   config.headers = config.headers ?? {};
 
-  // ✅ always attach a stable device id
+  // stable guest id for unique views
   try {
     config.headers["X-Device-Id"] = getDeviceId();
   } catch {
-    // ignore
+    // ignore (e.g. SSR)
   }
 
-  // ✅ attach auth token if logged in
+  // auth token if logged in
   const user = auth.currentUser;
   if (user) {
     const token = await user.getIdToken();
