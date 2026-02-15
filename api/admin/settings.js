@@ -1,9 +1,6 @@
 import { prisma } from "../_lib/prisma.js";
 import { requireAuth } from "../_lib/auth.js";
 
-// -----------------------------
-// helpers
-// -----------------------------
 function send(res, status, json) {
   return res.status(status).json(json);
 }
@@ -14,8 +11,7 @@ function getClientIp(req) {
   return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
 }
 
-// tiny in-memory rate limit (per warm lambda)
-const RL = new Map(); // key -> {count, resetAt}
+const RL = new Map();
 function rateLimit(key, limit, windowMs) {
   const now = Date.now();
   const cur = RL.get(key);
@@ -38,7 +34,7 @@ function readJson(req) {
 }
 
 function strOrNull(v) {
-  if (v === undefined) return undefined; // means "don't change"
+  if (v === undefined) return undefined;
   if (v === null) return null;
   const s = String(v).trim();
   return s ? s : null;
@@ -65,21 +61,30 @@ async function requireAdmin(req) {
   return decoded;
 }
 
+function appConfigModel() {
+  // If prisma client wasn't regenerated, prisma.appConfig will be undefined
+  if (!prisma.appConfig) {
+    const err = new Error(
+      "Prisma Client is missing model AppConfig. Add AppConfig to schema.prisma, run `npx prisma generate`, then redeploy."
+    );
+    err.statusCode = 500;
+    throw err;
+  }
+  return prisma.appConfig;
+}
+
 async function getOrCreateGlobalConfig() {
-  const existing = await prisma.appConfig.findUnique({ where: { id: "global" } });
+  const AppConfig = appConfigModel();
+  const existing = await AppConfig.findUnique({ where: { id: "global" } });
   if (existing) return existing;
 
-  return prisma.appConfig.create({
+  return AppConfig.create({
     data: { id: "global", escrowFeeBps: 200 },
   });
 }
 
-// -----------------------------
-// handler
-// -----------------------------
 export default async function handler(req, res) {
   try {
-    // basic RL
     const ip = getClientIp(req);
     if (!rateLimit(`adminSettings:${ip}`, 60, 60_000)) {
       res.setHeader("Retry-After", "60");
@@ -93,10 +98,9 @@ export default async function handler(req, res) {
       return send(res, 200, { settings });
     }
 
-    if (req.method === "POST") {
+    if (req.method === "PATCH" || req.method === "POST") {
+      const AppConfig = appConfigModel();
       const body = readJson(req);
-
-      // allow either {settings:{...}} or direct fields
       const s = body.settings && typeof body.settings === "object" ? body.settings : body;
 
       const escrowFeeBps = intOrUndefined(s.escrowFeeBps);
@@ -104,7 +108,7 @@ export default async function handler(req, res) {
         return send(res, 400, { message: "escrowFeeBps must be between 0 and 2000" });
       }
 
-      const updated = await prisma.appConfig.upsert({
+      const updated = await AppConfig.upsert({
         where: { id: "global" },
         create: {
           id: "global",
@@ -154,7 +158,7 @@ export default async function handler(req, res) {
       return send(res, 200, { settings: updated });
     }
 
-    res.setHeader("Allow", "GET, POST");
+    res.setHeader("Allow", "GET, PATCH, POST");
     return send(res, 405, { message: "Method not allowed" });
   } catch (e) {
     return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });

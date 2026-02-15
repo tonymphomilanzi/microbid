@@ -539,3 +539,24 @@ model ListingBid {
   @@index([bidderId])
   @@index([listingId, amount])
 }
+
+model AppConfig {
+  id String @id
+  escrowAgentUid String?
+  escrowFeeBps   Int @default(200)
+  companyBtcAddress String?
+  companyBtcNetwork String?
+  companyMomoName String?
+  companyMomoNumber String?
+  companyMomoCountry String?
+  companyWuName String?
+  companyWuCountry String?
+  companyWuCity String?
+  companyBankName String?
+  companyBankAccountName String?
+  companyBankAccountNumber String?
+  companyBankSwift String?
+  companyBankCountry String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
