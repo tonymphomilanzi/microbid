@@ -56,6 +56,14 @@ function CommentAuthor({ username }) {
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const isOnline = (ts) => (ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false);
 
+function moneyOrDash(v) {
+  // income/expense are Int? in Prisma, so could be null/undefined
+  if (v === null || v === undefined) return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return `$${n}`;
+}
+
 export default function ListingDetails() {
   const { id } = useParams();
   const { user, authReady, openAuthModal } = useAuth();
@@ -323,8 +331,8 @@ export default function ListingDetails() {
         const next = [res.bid, ...prev];
         next.sort(
           (a, b) =>
-            (Number(b.amount || 0) - Number(a.amount || 0)) ||
-            (new Date(b.createdAt) - new Date(a.createdAt))
+            Number(b.amount || 0) - Number(a.amount || 0) ||
+            new Date(b.createdAt) - new Date(a.createdAt)
         );
         return next.slice(0, 50);
       });
@@ -389,6 +397,13 @@ export default function ListingDetails() {
   const m = listing.metrics || {};
   const verified = Boolean(listing?.seller?.isVerified);
   const username = listing?.seller?.username || "";
+
+  const income = listing?.income ?? null;
+  const expense = listing?.expense ?? null;
+  const net =
+    income === null || income === undefined || expense === null || expense === undefined
+      ? null
+      : Number(income) - Number(expense);
 
   return (
     <PageContainer>
@@ -469,12 +484,39 @@ export default function ListingDetails() {
                     />
                     <SellerHandle username={username} />
                     {verified ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
+                      <span
+                        className="inline-flex items-center gap-1 text-xs text-primary"
+                        title="Verified seller"
+                      >
                         <BadgeCheck className="h-4 w-4" />
                         Verified
                       </span>
                     ) : null}
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* NEW: income/expense/net */}
+            <div className="grid grid-cols-3 gap-3">
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Income (monthly)</div>
+                  <div className="text-base font-semibold">{moneyOrDash(income)}</div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Expenses (monthly)</div>
+                  <div className="text-base font-semibold">{moneyOrDash(expense)}</div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="p-4">
+                  <div className="text-xs text-muted-foreground">Net (monthly)</div>
+                  <div className="text-base font-semibold">{moneyOrDash(net)}</div>
                 </CardContent>
               </Card>
             </div>
@@ -535,7 +577,11 @@ export default function ListingDetails() {
                 <span className="font-medium">{commentCount}</span>
               </button>
 
-              <ShareSheet url={shareUrl} title={listing.title} text={(listing.description || "").slice(0, 120)}>
+              <ShareSheet
+                url={shareUrl}
+                title={listing.title}
+                text={(listing.description || "").slice(0, 120)}
+              >
                 <button type="button" className={actionBtn}>
                   <Share2 className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium">Share</span>
@@ -550,9 +596,8 @@ export default function ListingDetails() {
                 {topBidder?.username ? `@${topBidder.username}` : "—"}
               </span>{" "}
               • Highest bid:{" "}
-              <span className="font-semibold text-foreground">${highestBid || 0}</span>{" "}
-              • Minimum next bid:{" "}
-              <span className="font-semibold text-foreground">${minBid}</span>
+              <span className="font-semibold text-foreground">${highestBid || 0}</span> • Minimum next
+              bid: <span className="font-semibold text-foreground">${minBid}</span>
             </div>
 
             {user && myTopBid > 0 && myTopBid < highestBid ? (

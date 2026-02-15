@@ -315,7 +315,7 @@ export default function CreateListingForm({ initial }) {
       value={form.expense}
       onChange={(e) => setForm((f) => ({ ...f, expense: e.target.value }))}
     /><p className="mt-1 text-xs text-muted-foreground">
-                    Enter espenses related to the channel/profile (e.g. content creation, ads, tools).
+                    Enter expenses related to the channel/profile (e.g. content creation, ads, tools).
                   </p>
   </div>
 </div>
