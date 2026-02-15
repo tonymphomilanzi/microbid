@@ -24,22 +24,27 @@ import { Toaster } from "./components/ui/toaster";
 import usePresencePing from "./hooks/usePresencePing";
 import CheckoutPage from "./pages/CheckoutPage";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminEscrows from "./pages/admin/AdminEscrows"; // ✅ NEW
 
 export default function App() {
   usePresencePing();
-  
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <AuthModal />
 
       <Routes>
+        {/* Public */}
         <Route path="/" element={<Home />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/listings/:id" element={<ListingDetails />} />
         <Route path="/checkout/:listingId" element={<CheckoutPage />} />
-     
+        <Route path="/feed" element={<Feed />} />
+        <Route path="/feed/:id" element={<FeedPostDetails />} />
+        <Route path="/pricing" element={<Pricing />} />
 
+        {/* User protected */}
         <Route
           path="/dashboard"
           element={
@@ -57,32 +62,32 @@ export default function App() {
           }
         />
 
-
+        {/* Admin */}
         <Route
-  path="/admin"
-  element={
-    <AdminRoute>
-      <AdminShell />
-    </AdminRoute>
-  }
->
-  <Route index element={<AdminHome />} />
-  <Route path="users" element={<AdminUsers />} />
-  <Route path="listings" element={<AdminListings />} />
-  <Route path="platforms" element={<AdminPlatforms />} />
-  <Route path="categories" element={<AdminCategories />} />
-  <Route path="feed" element={<AdminFeed />} />
-  <Route path="/admin/settings" element={<AdminSettings />} />
-</Route>
-<Route path="/feed" element={<Feed />} />
-<Route path="/feed/:id" element={<FeedPostDetails />} />
-<Route path="/pricing" element={<Pricing />} />
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminShell />
+            </AdminRoute>
+          }
+        >
+          <Route index element={<AdminHome />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="listings" element={<AdminListings />} />
+          <Route path="platforms" element={<AdminPlatforms />} />
+          <Route path="categories" element={<AdminCategories />} />
+          <Route path="feed" element={<AdminFeed />} />
+
+          {/* IMPORTANT: child routes must be relative (no leading /) */}
+          <Route path="settings" element={<AdminSettings />} />
+
+          {/* NEW */}
+          <Route path="escrows" element={<AdminEscrows />} />
+        </Route>
       </Routes>
 
-    
-
       <Footer />
-       <Toaster />
+      <Toaster />
     </div>
   );
 }

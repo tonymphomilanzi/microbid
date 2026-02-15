@@ -8,9 +8,11 @@ import {
   RectangleStackIcon,
   ListBulletIcon,
   Bars3Icon,
-  ArrowLeftIcon,NewspaperIcon
+  ArrowLeftIcon,
+  NewspaperIcon,
+  Cog6ToothIcon,
+  ShieldCheckIcon, // ✅ NEW
 } from "@heroicons/react/24/outline";
-import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 
 const nav = [
   { to: "/admin", label: "Overview", Icon: Squares2X2Icon },
@@ -19,6 +21,10 @@ const nav = [
   { to: "/admin/platforms", label: "Platforms", Icon: RectangleStackIcon },
   { to: "/admin/categories", label: "Categories", Icon: TagIcon },
   { to: "/admin/feed", label: "Feed", Icon: NewspaperIcon },
+
+  // ✅ NEW: Escrows queue
+  { to: "/admin/escrows", label: "Escrows", Icon: ShieldCheckIcon },
+
   { to: "/admin/settings", label: "Settings", Icon: Cog6ToothIcon },
 ];
 
@@ -111,9 +117,7 @@ export default function AdminShell() {
                 Control center • moderation • settings
               </div>
 
-              <div className="text-xs text-muted-foreground">
-        
-              </div>
+              <div className="text-xs text-muted-foreground"></div>
             </div>
           </div>
 
