@@ -1,29 +1,6 @@
 // /api/listings/index.js
-// -----------------------------------------------------------------------------
-// Routes:
-//   GET  /api/listings
-//   GET  /api/listings?public=listingComments&listingId=...
-//   GET  /api/listings?public=listingBids&listingId=...
-//
-//   POST /api/listings (auth) intents:
-//     - toggleListingLike
-//     - addListingComment
-//     - addListingBid
-//     - startEscrow     (manual checkout: BTC / WU / MOMO / BANK)  ✅ uses DB AppConfig (NOT env)
-//     - checkout        (Stripe) (kept for now)
-//     - create/update listing (default when no intent)
-//
-// Improvements:
-//   ✅ safe query parsing (fixes Vercel cases where req.query is undefined -> 500)
-//   ✅ rate limiting (in-memory; per warm instance)
-//   ✅ advisory locks (reduce races)
-//   ✅ idempotency cache (best-effort; per warm instance)
-//   ✅ income/expense supported
-// -----------------------------------------------------------------------------
-
 import { prisma } from "../_lib/prisma.js";
 import { requireAuth } from "../_lib/auth.js";
-import { getStripe } from "../_lib/stripe.js";
 
 // -----------------------------
 // Response helper
@@ -33,21 +10,22 @@ function send(res, status, json) {
 }
 
 // -----------------------------
-// Query parsing (IMPORTANT for Vercel)
-// Some runtimes don't provide req.query, so we parse from req.url as fallback.
+// Query parsing (Vercel-safe)
 // -----------------------------
 function qv(v) {
   return Array.isArray(v) ? v[0] : v;
 }
 
 function getQuery(req) {
+  // Next/Vercel sometimes provides req.query, sometimes not
   if (req?.query && typeof req.query === "object") return req.query;
+
   const url = new URL(req.url || "", "http://localhost");
   return Object.fromEntries(url.searchParams.entries());
 }
 
 // -----------------------------
-// Misc utilities
+// Utilities
 // -----------------------------
 function getClientIp(req) {
   const xff = req.headers["x-forwarded-for"];
@@ -70,12 +48,16 @@ function safeJsonParse(s) {
 }
 
 function readJson(req) {
-  const b = req.body;
-  if (!b) return {};
-  if (typeof b === "object") return b;
-  if (Buffer.isBuffer(b)) return safeJsonParse(b.toString("utf8"));
-  if (typeof b === "string") return safeJsonParse(b);
-  return {};
+  try {
+    const b = req.body;
+    if (!b) return {};
+    if (typeof b === "object") return b;
+    if (Buffer.isBuffer(b)) return safeJsonParse(b.toString("utf8"));
+    if (typeof b === "string") return safeJsonParse(b);
+    return {};
+  } catch {
+    return {};
+  }
 }
 
 async function optionalAuthUid(req) {
@@ -99,13 +81,10 @@ function toNumberOrUndefined(v) {
 function toNonNegativeIntOrNullOrUndefined(v) {
   if (v === undefined) return undefined; // don't touch
   if (v === null || v === "") return null; // clear field
-
   const n = Number(v);
   if (!Number.isFinite(n)) return undefined;
-
   const int = Math.trunc(n);
   if (int < 0) return undefined;
-
   return int;
 }
 
@@ -139,19 +118,19 @@ function getIdempotencyKey(req, body) {
 // -----------------------------
 // Rate limiting (in-memory)
 // -----------------------------
-const RL_BUCKETS = new Map(); // key -> { count, resetAt }
+const RL_BUCKETS = new Map();
 function rateLimit({ key, limit, windowMs }) {
   const now = Date.now();
   const cur = RL_BUCKETS.get(key);
 
   if (!cur || now > cur.resetAt) {
     RL_BUCKETS.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, remaining: limit - 1, resetAt: now + windowMs };
+    return { allowed: true, resetAt: now + windowMs };
   }
-  if (cur.count >= limit) return { allowed: false, remaining: 0, resetAt: cur.resetAt };
+  if (cur.count >= limit) return { allowed: false, resetAt: cur.resetAt };
 
   cur.count += 1;
-  return { allowed: true, remaining: Math.max(0, limit - cur.count), resetAt: cur.resetAt };
+  return { allowed: true, resetAt: cur.resetAt };
 }
 
 function checkRateLimitOr429(req, res, { scope, limit, windowMs }) {
@@ -170,7 +149,7 @@ function checkRateLimitOr429(req, res, { scope, limit, windowMs }) {
 // -----------------------------
 // Idempotency cache (in-memory)
 // -----------------------------
-const IDEM = new Map(); // key -> { expiresAt, status, body }
+const IDEM = new Map();
 function getCachedIdem(key) {
   const v = IDEM.get(key);
   if (!v) return null;
@@ -193,14 +172,13 @@ async function advisoryLock(tx, lockKey) {
 
 // -----------------------------
 // AppConfig (DB settings) for manual checkout
-// Requires Prisma model AppConfig.
 // -----------------------------
 const APP_CONFIG_CACHE = { value: null, exp: 0 };
 
 function requireAppConfigModel() {
   if (!prisma.appConfig) {
     const err = new Error(
-      "Prisma Client missing AppConfig. Add AppConfig to schema.prisma, run `npx prisma generate`, then redeploy."
+      "Prisma Client missing AppConfig. Add AppConfig to schema.prisma, run `npx prisma generate`, redeploy."
     );
     err.statusCode = 500;
     throw err;
@@ -219,7 +197,7 @@ async function getAppConfigCached() {
     (await AppConfig.create({ data: { id: "global", escrowFeeBps: 200 } }).catch(() => null));
 
   APP_CONFIG_CACHE.value = cfg;
-  APP_CONFIG_CACHE.exp = now + 30_000; // 30s cache
+  APP_CONFIG_CACHE.exp = now + 30_000;
   return cfg;
 }
 
@@ -309,16 +287,24 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 }
 
 // -----------------------------
-// Main handler
+// Stripe lazy loader (prevents GET from crashing)
+// -----------------------------
+async function getStripeLazy() {
+  // Only load Stripe module when checkout intent is used.
+  const mod = await import("../_lib/stripe.js");
+  return mod.getStripe();
+}
+
+// -----------------------------
+// Handler
 // -----------------------------
 export default async function handler(req, res) {
   try {
     const query = getQuery(req);
 
-    // -------------------------------------------------------------------------
-    // PUBLIC GET: listing comments
-    // GET /api/listings?public=listingComments&listingId=...
-    // -------------------------------------------------------------------------
+    // -------------------------
+    // PUBLIC: listingComments
+    // -------------------------
     if (req.method === "GET" && qv(query?.public) === "listingComments") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listingComments", limit: 60, windowMs: 60_000 }))
         return;
@@ -348,10 +334,9 @@ export default async function handler(req, res) {
       return send(res, 200, { comments, commentCount });
     }
 
-    // -------------------------------------------------------------------------
-    // PUBLIC GET: listing bids
-    // GET /api/listings?public=listingBids&listingId=...
-    // -------------------------------------------------------------------------
+    // -------------------------
+    // PUBLIC: listingBids
+    // -------------------------
     if (req.method === "GET" && qv(query?.public) === "listingBids") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listingBids", limit: 60, windowMs: 60_000 }))
         return;
@@ -389,10 +374,9 @@ export default async function handler(req, res) {
       return send(res, 200, { bids, bidCount, highestBid, minNextBid: highestBid + 1 });
     }
 
-    // -------------------------------------------------------------------------
-    // PUBLIC GET: list listings
-    // GET /api/listings
-    // -------------------------------------------------------------------------
+    // -------------------------
+    // PUBLIC: list listings
+    // -------------------------
     if (req.method === "GET") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listings", limit: 120, windowMs: 60_000 }))
         return;
@@ -400,11 +384,8 @@ export default async function handler(req, res) {
       const platform = qv(query?.platform);
       const categoryId = qv(query?.categoryId);
       const q = qv(query?.q);
-      const minPrice = qv(query?.minPrice);
-      const maxPrice = qv(query?.maxPrice);
-
-      const minP = toNumberOrUndefined(minPrice);
-      const maxP = toNumberOrUndefined(maxPrice);
+      const minP = toNumberOrUndefined(query?.minPrice);
+      const maxP = toNumberOrUndefined(query?.maxPrice);
 
       const where = {
         status: "ACTIVE",
@@ -464,9 +445,9 @@ export default async function handler(req, res) {
       return send(res, 200, { listings });
     }
 
-    // -------------------------------------------------------------------------
-    // AUTH POST: intents + create/update
-    // -------------------------------------------------------------------------
+    // -------------------------
+    // AUTH: intents + upsert
+    // -------------------------
     if (req.method === "POST") {
       if (!checkRateLimitOr429(req, res, { scope: "post:listings", limit: 120, windowMs: 60_000 }))
         return;
@@ -474,7 +455,6 @@ export default async function handler(req, res) {
       const body = readJson(req);
       const intent = body.intent || "upsertListing";
 
-      // Pre-auth idempotency cache for common retry/double-submit intents
       const preIdemKey = getIdempotencyKey(req, body);
       if (preIdemKey && ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)) {
         const ip = getClientIp(req);
@@ -496,9 +476,7 @@ export default async function handler(req, res) {
         if (cached) return send(res, cached.status, cached.body);
       }
 
-      // -----------------------------------------------------------------------
-      // Intent: addListingBid
-      // -----------------------------------------------------------------------
+      // -------- addListingBid --------
       if (intent === "addListingBid") {
         if (!checkRateLimitOr429(req, res, { scope: "post:addListingBid", limit: 20, windowMs: 60_000 }))
           return;
@@ -519,40 +497,6 @@ export default async function handler(req, res) {
 
         const result = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `bid:${listingId}`);
-
-          const recentSame = await tx.listingBid.findFirst({
-            where: {
-              listingId,
-              bidderId: decoded.uid,
-              amount: Math.trunc(amount),
-              createdAt: { gte: new Date(Date.now() - 30_000) },
-            },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  username: true,
-                  avatarUrl: true,
-                  lastActiveAt: true,
-                  isVerified: true,
-                  tier: true,
-                },
-              },
-            },
-          });
-
-          if (recentSame) {
-            const agg = await tx.listingBid.aggregate({
-              where: { listingId },
-              _max: { amount: true },
-              _count: { _all: true },
-            });
-
-            const highestBid = agg._max?.amount ?? recentSame.amount;
-            const bidCount = agg._count?._all ?? 1;
-
-            return { bid: recentSame, highestBid, bidCount, minNextBid: highestBid + 1 };
-          }
 
           const top = await tx.listingBid.findFirst({
             where: { listingId },
@@ -601,9 +545,7 @@ export default async function handler(req, res) {
         return send(res, 201, result);
       }
 
-      // -----------------------------------------------------------------------
-      // Intent: toggleListingLike
-      // -----------------------------------------------------------------------
+      // -------- toggleListingLike --------
       if (intent === "toggleListingLike") {
         if (!checkRateLimitOr429(req, res, { scope: "post:toggleListingLike", limit: 120, windowMs: 60_000 }))
           return;
@@ -617,14 +559,12 @@ export default async function handler(req, res) {
           await advisoryLock(tx, `like:${listingId}:${decoded.uid}`);
 
           const existing = await tx.listingLike.findUnique({ where });
-
-          if (existing) {
-            await tx.listingLike.delete({ where });
-          } else {
+          if (existing) await tx.listingLike.delete({ where });
+          else {
             try {
               await tx.listingLike.create({ data: { listingId, userId: decoded.uid } });
             } catch {
-              // ignore unique race
+              // ignore race
             }
           }
 
@@ -645,9 +585,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // -----------------------------------------------------------------------
-      // Intent: addListingComment
-      // -----------------------------------------------------------------------
+      // -------- addListingComment --------
       if (intent === "addListingComment") {
         if (!checkRateLimitOr429(req, res, { scope: "post:addListingComment", limit: 30, windowMs: 60_000 }))
           return;
@@ -662,13 +600,8 @@ export default async function handler(req, res) {
         const result = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
 
-          const recentSame = await tx.listingComment.findFirst({
-            where: {
-              listingId,
-              authorId: decoded.uid,
-              body: text,
-              createdAt: { gte: new Date(Date.now() - 30_000) },
-            },
+          const comment = await tx.listingComment.create({
+            data: { listingId, authorId: decoded.uid, body: text },
             include: {
               author: {
                 select: {
@@ -682,24 +615,6 @@ export default async function handler(req, res) {
               },
             },
           });
-
-          const comment =
-            recentSame ||
-            (await tx.listingComment.create({
-              data: { listingId, authorId: decoded.uid, body: text },
-              include: {
-                author: {
-                  select: {
-                    id: true,
-                    username: true,
-                    avatarUrl: true,
-                    lastActiveAt: true,
-                    isVerified: true,
-                    tier: true,
-                  },
-                },
-              },
-            }));
 
           const counts = await tx.listing.findUnique({
             where: { id: listingId },
@@ -718,13 +633,7 @@ export default async function handler(req, res) {
         return send(res, 201, result);
       }
 
-      // -----------------------------------------------------------------------
-      // Intent: startEscrow (manual checkout)
-      // Uses DB AppConfig (Admin → Settings) for:
-      //  - escrow fee bps
-      //  - deposit details shown to buyer
-      // NOTE: escrowAgentId is forced to "SYSTEM" (no admin typing)
-      // -----------------------------------------------------------------------
+      // -------- startEscrow (manual) --------
       if (intent === "startEscrow") {
         if (!checkRateLimitOr429(req, res, { scope: "post:startEscrow", limit: 20, windowMs: 60_000 }))
           return;
@@ -747,24 +656,24 @@ export default async function handler(req, res) {
 
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
-          select: { id: true, title: true, price: true, status: true, sellerId: true },
+          select: { id: true, price: true, status: true, sellerId: true },
         });
 
         if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
 
         const cfg = await getAppConfigCached();
-
-        // If admin hasn't configured deposit details, block checkout (prevents blank instructions)
         const missing = validateManualConfigForMethod(cfg, method);
         if (missing.length) {
           return send(res, 400, {
-            message: `Payment method not configured: missing ${missing.join(", ")}. Ask admin to update Admin → Settings.`,
+            message: `Payment method not configured: missing ${missing.join(
+              ", "
+            )}. Ask admin to update Admin → Settings.`,
           });
         }
 
         const feeBps = Number(cfg?.escrowFeeBps ?? 200);
-        const minFeeCents = 0; // keep 0 for now (you can add to AppConfig later if you want)
+        const minFeeCents = 0;
         const escrowAgentId = "SYSTEM";
 
         const escrow = await prisma.$transaction(async (tx) => {
@@ -776,16 +685,7 @@ export default async function handler(req, res) {
               buyerId: decoded.uid,
               provider: mapped.provider,
               providerRef: mapped.providerRef,
-              status: {
-                in: [
-                  "INITIATED",
-                  "FEE_PAID",
-                  "FULLY_PAID",
-                  "AWAITING_SELLER_ASSIGN_ESCROW",
-                  "ESCROW_ASSIGNED",
-                  "BUYER_ASSIGNED_MANAGER",
-                ],
-              },
+              status: { in: ["INITIATED", "FEE_PAID", "FULLY_PAID"] },
             },
             orderBy: { createdAt: "desc" },
           });
@@ -825,10 +725,9 @@ export default async function handler(req, res) {
         return send(res, 200, payload);
       }
 
-      // -----------------------------------------------------------------------
-      // Intent: checkout (Stripe) (kept for now)
-      // -----------------------------------------------------------------------
+      // -------- checkout (Stripe) --------
       if (intent === "checkout") {
+        // Stripe is loaded lazily so GET /api/listings never crashes due to Stripe env/config.
         if (!checkRateLimitOr429(req, res, { scope: "post:checkout", limit: 10, windowMs: 60_000 }))
           return;
 
@@ -840,58 +739,31 @@ export default async function handler(req, res) {
           include: { seller: true },
         });
 
-        if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
-
-        const stripe = getStripe();
-
-        const recent = await prisma.purchase.findFirst({
-          where: {
-            listingId: listing.id,
-            buyerId: decoded.uid,
-            stripeSessionId: { not: null },
-            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-          },
-          orderBy: { createdAt: "desc" },
-          select: { id: true, stripeSessionId: true },
-        });
-
-        if (recent?.stripeSessionId) {
-          try {
-            const existingSession = await stripe.checkout.sessions.retrieve(recent.stripeSessionId);
-            if (existingSession?.url) {
-              const payload = { checkoutUrl: existingSession.url };
-              if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
-              return send(res, 200, payload);
-            }
-          } catch {
-            // ignore
-          }
+        if (!listing || listing.status !== "ACTIVE") {
+          return send(res, 404, { message: "Listing not available" });
         }
 
-        const stripeIdemKey = idemKey ? `checkout:${decoded.uid}:${listing.id}:${idemKey}` : undefined;
+        const stripe = await getStripeLazy();
 
-        const session = await stripe.checkout.sessions.create(
-          {
-            mode: "payment",
-            success_url: process.env.STRIPE_SUCCESS_URL,
-            cancel_url: process.env.STRIPE_CANCEL_URL,
-            line_items: [
-              {
-                quantity: 1,
-                price_data: {
-                  currency: "usd",
-                  unit_amount: listing.price * 100,
-                  product_data: {
-                    name: listing.title,
-                    images: listing.image ? [listing.image] : [],
-                  },
+        const session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          success_url: process.env.STRIPE_SUCCESS_URL,
+          cancel_url: process.env.STRIPE_CANCEL_URL,
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: "usd",
+                unit_amount: listing.price * 100,
+                product_data: {
+                  name: listing.title,
+                  images: listing.image ? [listing.image] : [],
                 },
               },
-            ],
-            metadata: { listingId: listing.id, buyerId: decoded.uid, sellerId: listing.sellerId },
-          },
-          stripeIdemKey ? { idempotencyKey: stripeIdemKey } : undefined
-        );
+            },
+          ],
+          metadata: { listingId: listing.id, buyerId: decoded.uid, sellerId: listing.sellerId },
+        });
 
         await prisma.purchase.create({
           data: {
@@ -903,14 +775,10 @@ export default async function handler(req, res) {
           },
         });
 
-        const payload = { checkoutUrl: session.url };
-        if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
-        return send(res, 200, payload);
+        return send(res, 200, { checkoutUrl: session.url });
       }
 
-      // -----------------------------------------------------------------------
-      // Default: Create / Update listing (income/expense supported)
-      // -----------------------------------------------------------------------
+      // -------- default upsert listing --------
       if (!checkRateLimitOr429(req, res, { scope: "post:upsertListing", limit: 30, windowMs: 60_000 }))
         return;
 
@@ -1063,8 +931,8 @@ export default async function handler(req, res) {
     res.setHeader("Allow", "GET, POST");
     return send(res, 405, { message: "Method not allowed" });
   } catch (e) {
-    // Helpful for Vercel logs when something becomes a 500
-    console.error("API /listings error:", e);
+    // This will appear in Vercel function logs:
+    console.error("API /listings crashed:", e);
     return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
   }
 }
