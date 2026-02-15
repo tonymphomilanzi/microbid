@@ -8,14 +8,15 @@
 //     - toggleListingLike
 //     - addListingComment
 //     - addListingBid
-//     - checkout (Stripe)
+//     - startEscrow   ✅ (MANUAL checkout: BTC / WU / MOMO / BANK)
+//     - checkout (Stripe)  (kept for now; you can remove later)
 //     - create/update listing (default when no intent)
 //
 // Improvements added (without breaking response shapes your UI expects):
-//   income/expense support for listings (create + update)
-//   best-effort rate limiting (in-memory; works per warm lambda instance)
-//   race-condition reduction using Postgres advisory locks
-//   best-effort idempotency (header/body key + dedupe windows for bids/comments/checkout)
+//   ✅ income/expense support for listings (create + update)
+//   ✅ best-effort rate limiting (in-memory; works per warm lambda instance)
+//   ✅ race-condition reduction using Postgres advisory locks
+//   ✅ best-effort idempotency (header/body key + dedupe windows for bids/comments/checkout/startEscrow)
 // -----------------------------------------------------------------------------
 
 import { prisma } from "../_lib/prisma.js";
@@ -25,13 +26,11 @@ import { getStripe } from "../_lib/stripe.js";
 // -----------------------------
 // Small utilities
 // -----------------------------
-
 function send(res, status, json) {
   return res.status(status).json(json);
 }
 
 function getClientIp(req) {
-  // Vercel/Proxy typical headers
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length) return xff.split(",")[0].trim();
   if (Array.isArray(xff) && xff[0]) return String(xff[0]).trim();
@@ -78,11 +77,8 @@ function toNumberOrUndefined(v) {
 }
 
 function toNonNegativeIntOrNullOrUndefined(v) {
-  // undefined => don't touch (useful for "update only when provided")
-  if (v === undefined) return undefined;
-
-  // null/"" => explicitly clear (set to null)
-  if (v === null || v === "") return null;
+  if (v === undefined) return undefined; // don't touch
+  if (v === null || v === "") return null; // clear field
 
   const n = Number(v);
   if (!Number.isFinite(n)) return undefined;
@@ -99,7 +95,6 @@ function cleanImageList(arr) {
     .map((x) => (typeof x === "string" ? x.trim() : ""))
     .filter(Boolean);
 
-  // remove duplicates while preserving order
   const seen = new Set();
   const uniq = [];
   for (const u of cleaned) {
@@ -112,7 +107,6 @@ function cleanImageList(arr) {
 }
 
 function getIdempotencyKey(req, body) {
-  // Standard-ish places
   const headerKey =
     req.headers["idempotency-key"] ||
     req.headers["x-idempotency-key"] ||
@@ -124,8 +118,6 @@ function getIdempotencyKey(req, body) {
 
 // -----------------------------
 // Best-effort rate limiter (in-memory)
-// NOTE: Serverless instances scale horizontally, so this is not global.
-// It still helps a lot against accidental spam and UI double-click bursts.
 // -----------------------------
 const RL_BUCKETS = new Map(); // key -> { count, resetAt }
 function rateLimit({ key, limit, windowMs }) {
@@ -151,7 +143,6 @@ function checkRateLimitOr429(req, res, { scope, limit, windowMs }) {
   const r = rateLimit({ key, limit, windowMs });
 
   if (!r.allowed) {
-    // Keep response simple; clients typically display "Try again".
     res.setHeader("Retry-After", String(Math.ceil((r.resetAt - Date.now()) / 1000)));
     send(res, 429, { message: "Too many requests. Please slow down." });
     return false;
@@ -161,7 +152,6 @@ function checkRateLimitOr429(req, res, { scope, limit, windowMs }) {
 
 // -----------------------------
 // Best-effort idempotency cache (in-memory)
-// Used for retry/double submit protection.
 // -----------------------------
 const IDEM = new Map(); // key -> { expiresAt, status, body }
 function getCachedIdem(key) {
@@ -178,12 +168,78 @@ function setCachedIdem(key, status, body, ttlMs = 2 * 60 * 1000) {
 }
 
 // -----------------------------
-// Advisory locks (race condition reduction)
-// Uses Postgres hashtextextended -> bigint to lock within the current TX.
+// Advisory locks (race reduction)
 // -----------------------------
 async function advisoryLock(tx, lockKey) {
-  // Requires PostgreSQL (Neon supports this)
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+}
+
+// -----------------------------
+// Deposit instructions builder (company-controlled)
+// Put these in Vercel env vars so you can change without code edits.
+// -----------------------------
+function instructionsForManualMethod(method, escrowId, totalChargeCents) {
+  const totalUsd = (Number(totalChargeCents || 0) / 100).toFixed(2);
+
+  if (method === "BTC") {
+    return {
+      lines: [
+        `Send exactly $${totalUsd} worth of BTC to the address below.`,
+        `Reference code: ${escrowId}. Keep it for proof.`,
+        "After payment, keep your transaction hash as proof (proof upload can be added later).",
+      ],
+      fields: [
+        { label: "BTC Address", value: process.env.COMPANY_BTC_ADDRESS || "SET_COMPANY_BTC_ADDRESS" },
+        { label: "Network", value: process.env.COMPANY_BTC_NETWORK || "Bitcoin" },
+      ],
+    };
+  }
+
+  if (method === "MOMO") {
+    return {
+      lines: [
+        `Send exactly $${totalUsd} (or equivalent) to the Mobile Money details below.`,
+        `Use reference code: ${escrowId} as the payment reference.`,
+        "Keep the SMS/receipt as proof.",
+      ],
+      fields: [
+        { label: "Account Name", value: process.env.COMPANY_MOMO_NAME || "SET_COMPANY_MOMO_NAME" },
+        { label: "MoMo Number", value: process.env.COMPANY_MOMO_NUMBER || "SET_COMPANY_MOMO_NUMBER" },
+        { label: "Country", value: process.env.COMPANY_MOMO_COUNTRY || "SET_COMPANY_MOMO_COUNTRY" },
+      ],
+    };
+  }
+
+  if (method === "WU") {
+    return {
+      lines: [
+        `Send exactly $${totalUsd} via Western Union.`,
+        `Use reference code: ${escrowId} (if a note/message is possible).`,
+        "Keep the MTCN code as proof.",
+      ],
+      fields: [
+        { label: "Receiver Name", value: process.env.COMPANY_WU_NAME || "SET_COMPANY_WU_NAME" },
+        { label: "Receiver Country", value: process.env.COMPANY_WU_COUNTRY || "SET_COMPANY_WU_COUNTRY" },
+        { label: "Receiver City", value: process.env.COMPANY_WU_CITY || "SET_COMPANY_WU_CITY" },
+      ],
+    };
+  }
+
+  // BANK
+  return {
+    lines: [
+      `Send exactly $${totalUsd} via bank transfer.`,
+      `Put reference code: ${escrowId} in the transfer reference/memo.`,
+      "Keep the transfer receipt as proof.",
+    ],
+    fields: [
+      { label: "Bank Name", value: process.env.COMPANY_BANK_NAME || "SET_COMPANY_BANK_NAME" },
+      { label: "Account Name", value: process.env.COMPANY_BANK_ACCOUNT_NAME || "SET_COMPANY_BANK_ACCOUNT_NAME" },
+      { label: "Account Number", value: process.env.COMPANY_BANK_ACCOUNT_NUMBER || "SET_COMPANY_BANK_ACCOUNT_NUMBER" },
+      { label: "IBAN / SWIFT (optional)", value: process.env.COMPANY_BANK_SWIFT || "OPTIONAL" },
+      { label: "Country", value: process.env.COMPANY_BANK_COUNTRY || "SET_COMPANY_BANK_COUNTRY" },
+    ],
+  };
 }
 
 // -----------------------------
@@ -193,7 +249,6 @@ export default async function handler(req, res) {
   try {
     // -------------------------------------------------------------------------
     // PUBLIC GET: listing comments
-    // GET /api/listings?public=listingComments&listingId=...
     // -------------------------------------------------------------------------
     if (req.method === "GET" && req.query?.public === "listingComments") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listingComments", limit: 60, windowMs: 60_000 }))
@@ -221,13 +276,11 @@ export default async function handler(req, res) {
       });
 
       const commentCount = await prisma.listingComment.count({ where: { listingId } });
-
       return send(res, 200, { comments, commentCount });
     }
 
     // -------------------------------------------------------------------------
     // PUBLIC GET: listing bids
-    // GET /api/listings?public=listingBids&listingId=...
     // -------------------------------------------------------------------------
     if (req.method === "GET" && req.query?.public === "listingBids") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listingBids", limit: 60, windowMs: 60_000 }))
@@ -238,7 +291,7 @@ export default async function handler(req, res) {
 
       const bids = await prisma.listingBid.findMany({
         where: { listingId },
-        orderBy: [{ amount: "desc" }, { createdAt: "desc" }], // stable ordering
+        orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
         take: 50,
         include: {
           bidder: {
@@ -263,17 +316,11 @@ export default async function handler(req, res) {
       const highestBid = agg._max?.amount ?? 0;
       const bidCount = agg._count?._all ?? 0;
 
-      return send(res, 200, {
-        bids,
-        bidCount,
-        highestBid,
-        minNextBid: highestBid + 1, // optional (your UI ignores/uses it safely)
-      });
+      return send(res, 200, { bids, bidCount, highestBid, minNextBid: highestBid + 1 });
     }
 
     // -------------------------------------------------------------------------
     // PUBLIC GET: list listings
-    // GET /api/listings
     // -------------------------------------------------------------------------
     if (req.method === "GET") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listings", limit: 120, windowMs: 60_000 }))
@@ -306,7 +353,7 @@ export default async function handler(req, res) {
           : {}),
       };
 
-      const uid = await optionalAuthUid(req); // may be null (public)
+      const uid = await optionalAuthUid(req);
 
       const listingsRaw = await prisma.listing.findMany({
         where,
@@ -328,7 +375,6 @@ export default async function handler(req, res) {
         },
       });
 
-      // Keep exactly the same mapping (plus listing will now naturally contain income/expense)
       const listings = listingsRaw.map((l) => {
         const { _count, likes, ...rest } = l;
         return {
@@ -345,20 +391,17 @@ export default async function handler(req, res) {
 
     // -------------------------------------------------------------------------
     // AUTH POST: intents + create/update
-    // POST /api/listings
     // -------------------------------------------------------------------------
     if (req.method === "POST") {
-      // rate limit POST generally (before auth to avoid expensive verification loops)
       if (!checkRateLimitOr429(req, res, { scope: "post:listings", limit: 120, windowMs: 60_000 }))
         return;
 
       const body = readJson(req);
       const intent = body.intent || "upsertListing";
 
-      // For intents that often get retried, support best-effort idempotency
-      // Keyed by ip+intent+idemKey (and later by uid once auth is decoded)
+      // Pre-auth idempotency cache for common retry/double-submit intents
       const preIdemKey = getIdempotencyKey(req, body);
-      if (preIdemKey && ["addListingBid", "addListingComment", "checkout"].includes(intent)) {
+      if (preIdemKey && ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)) {
         const ip = getClientIp(req);
         const cacheKey = `idem:${intent}:${ip}:${preIdemKey}`;
         const cached = getCachedIdem(cacheKey);
@@ -367,10 +410,9 @@ export default async function handler(req, res) {
 
       const decoded = await requireAuth(req);
 
-      // Once we have uid, prefer uid-scoped idempotency (better)
       const idemKey = getIdempotencyKey(req, body);
       const userScopedIdemKey =
-        idemKey && ["addListingBid", "addListingComment", "checkout"].includes(intent)
+        idemKey && ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)
           ? `idem:${intent}:u:${decoded.uid}:${idemKey}`
           : null;
 
@@ -380,7 +422,7 @@ export default async function handler(req, res) {
       }
 
       // -----------------------------------------------------------------------
-      // Intent: addListingBid (race-safe + idempotent-ish)
+      // Intent: addListingBid
       // -----------------------------------------------------------------------
       if (intent === "addListingBid") {
         if (!checkRateLimitOr429(req, res, { scope: "post:addListingBid", limit: 20, windowMs: 60_000 }))
@@ -390,35 +432,25 @@ export default async function handler(req, res) {
         const amount = Number(body.amount);
 
         if (!listingId) return send(res, 400, { message: "Missing listingId" });
-        if (!Number.isFinite(amount) || amount <= 0) {
-          return send(res, 400, { message: "Invalid bid amount" });
-        }
+        if (!Number.isFinite(amount) || amount <= 0) return send(res, 400, { message: "Invalid bid amount" });
 
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
           select: { id: true, sellerId: true, status: true, price: true },
         });
 
-        if (!listing || listing.status !== "ACTIVE") {
-          return send(res, 404, { message: "Listing not available" });
-        }
-
-        if (listing.sellerId === decoded.uid) {
-          return send(res, 403, { message: "You cannot bid on your own listing." });
-        }
+        if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
+        if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot bid on your own listing." });
 
         const result = await prisma.$transaction(async (tx) => {
-          // Serialize bid writes per listing to reduce race conditions
           await advisoryLock(tx, `bid:${listingId}`);
 
-          // Idempotency-ish: if same bidder placed same amount very recently, return it
-          // (helps with client retries / double-click)
           const recentSame = await tx.listingBid.findFirst({
             where: {
               listingId,
               bidderId: decoded.uid,
               amount: Math.trunc(amount),
-              createdAt: { gte: new Date(Date.now() - 30_000) }, // 30 seconds window
+              createdAt: { gte: new Date(Date.now() - 30_000) },
             },
             include: {
               bidder: {
@@ -490,14 +522,12 @@ export default async function handler(req, res) {
           return { bid, highestBid, bidCount, minNextBid: highestBid + 1 };
         });
 
-        // Store idempotency cache (best-effort)
         if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 201, result, 2 * 60_000);
-
         return send(res, 201, result);
       }
 
       // -----------------------------------------------------------------------
-      // Intent: toggleListingLike (race-safe)
+      // Intent: toggleListingLike
       // -----------------------------------------------------------------------
       if (intent === "toggleListingLike") {
         if (!checkRateLimitOr429(req, res, { scope: "post:toggleListingLike", limit: 120, windowMs: 60_000 }))
@@ -508,7 +538,6 @@ export default async function handler(req, res) {
 
         const where = { listingId_userId: { listingId, userId: decoded.uid } };
 
-        // Make toggle safer under concurrency using advisory lock per (listing,user)
         const { liked, counts } = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `like:${listingId}:${decoded.uid}`);
 
@@ -517,12 +546,10 @@ export default async function handler(req, res) {
           if (existing) {
             await tx.listingLike.delete({ where });
           } else {
-            // If two requests race, create may throw unique constraint. We handle it.
             try {
               await tx.listingLike.create({ data: { listingId, userId: decoded.uid } });
-            } catch (e) {
-              // If unique violation happened due to race, treat as liked=true
-              // Prisma unique error code is P2002; but we can just ignore and proceed.
+            } catch {
+              // ignore (unique race)
             }
           }
 
@@ -531,9 +558,7 @@ export default async function handler(req, res) {
             select: { _count: { select: { likes: true, comments: true, views: true } } },
           });
 
-          // Re-check final existence for accurate "liked"
           const final = await tx.listingLike.findUnique({ where });
-
           return { liked: Boolean(final), counts };
         });
 
@@ -546,7 +571,7 @@ export default async function handler(req, res) {
       }
 
       // -----------------------------------------------------------------------
-      // Intent: addListingComment (rate-limited + idempotent-ish)
+      // Intent: addListingComment
       // -----------------------------------------------------------------------
       if (intent === "addListingComment") {
         if (!checkRateLimitOr429(req, res, { scope: "post:addListingComment", limit: 30, windowMs: 60_000 }))
@@ -562,7 +587,6 @@ export default async function handler(req, res) {
         const result = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
 
-          // Idempotency-ish: same body recently by same author on same listing
           const recentSame = await tx.listingComment.findFirst({
             where: {
               listingId,
@@ -616,14 +640,125 @@ export default async function handler(req, res) {
         });
 
         if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 201, result, 2 * 60_000);
-
         return send(res, 201, result);
       }
 
       // -----------------------------------------------------------------------
-      // Intent: checkout (Stripe) - improved idempotency to avoid duplicate sessions/purchases
-      // NOTE: Your current design creates a Purchase immediately. We preserve that behavior,
-      //       but we try hard not to create multiple purchases for the same buyer/listing.
+      // Intent: startEscrow  ✅ MANUAL PAYMENTS (BTC / WU / MOMO / BANK)
+      //
+      // Uses your Prisma model EscrowTransaction:
+      //   provider: BTC | MOMO | MANUAL
+      //   providerRef: "WU" or "BANK" when provider=MANUAL
+      // Fee: default 2% (200 bps). Admin-configurable later; for now env-based.
+      //
+      // Response shape for frontend:
+      //   { escrow: EscrowTransaction, instructions: { lines:[], fields:[] } }
+      // -----------------------------------------------------------------------
+      if (intent === "startEscrow") {
+        if (!checkRateLimitOr429(req, res, { scope: "post:startEscrow", limit: 20, windowMs: 60_000 }))
+          return;
+
+        const listingId = String(body.listingId || "");
+        const method = String(body.method || "").toUpperCase();
+
+        if (!listingId) return send(res, 400, { message: "Missing listingId" });
+        if (!method) return send(res, 400, { message: "Missing method" });
+
+        // UI methods -> Prisma enums
+        // Your PaymentProvider enum supports BTC, MOMO, MANUAL.
+        // WU/BANK are represented as provider=MANUAL + providerRef.
+        const map = {
+          BTC: { provider: "BTC", providerRef: null },
+          MOMO: { provider: "MOMO", providerRef: null },
+          WU: { provider: "MANUAL", providerRef: "WU" },
+          BANK: { provider: "MANUAL", providerRef: "BANK" },
+        };
+
+        const mapped = map[method];
+        if (!mapped) return send(res, 400, { message: "Unsupported payment method" });
+
+        const listing = await prisma.listing.findUnique({
+          where: { id: listingId },
+          select: { id: true, title: true, price: true, status: true, sellerId: true },
+        });
+
+        if (!listing || listing.status !== "ACTIVE") {
+          return send(res, 404, { message: "Listing not available" });
+        }
+        if (listing.sellerId === decoded.uid) {
+          return send(res, 403, { message: "You cannot buy your own listing." });
+        }
+
+        // Defaults: 2% fee
+        const feeBps = Number(process.env.ESCROW_FEE_BPS ?? 200);
+        const minFeeCents = Number(process.env.ESCROW_MIN_FEE_CENTS ?? 0);
+
+        // Not a relation in your schema, so any string is acceptable.
+        // Set this in Vercel env to your company/admin uid (or a system string).
+        const escrowAgentId = String(process.env.ESCROW_AGENT_UID || "SYSTEM");
+
+        const escrow = await prisma.$transaction(async (tx) => {
+          await advisoryLock(tx, `escrow:start:${listingId}:${decoded.uid}:${method}`);
+
+          // Idempotency without requiring a key:
+          // reuse latest "open" escrow for buyer+listing+method if it exists.
+          const existing = await tx.escrowTransaction.findFirst({
+            where: {
+              listingId,
+              buyerId: decoded.uid,
+              provider: mapped.provider,
+              providerRef: mapped.providerRef,
+              status: {
+                in: [
+                  "INITIATED",
+                  "FEE_PAID",
+                  "FULLY_PAID",
+                  "AWAITING_SELLER_ASSIGN_ESCROW",
+                  "ESCROW_ASSIGNED",
+                  "BUYER_ASSIGNED_MANAGER",
+                ],
+              },
+            },
+            orderBy: { createdAt: "desc" },
+          });
+
+          if (existing) return existing;
+
+          const priceCents = Math.trunc(Number(listing.price) * 100);
+          const calcFee = Math.round((priceCents * feeBps) / 10_000);
+          const feeCents = Math.max(calcFee, minFeeCents);
+          const totalChargeCents = priceCents + feeCents;
+
+          return tx.escrowTransaction.create({
+            data: {
+              listingId,
+              buyerId: decoded.uid,
+              sellerId: listing.sellerId,
+              escrowAgentId,
+              mode: "SAFEST",
+              provider: mapped.provider,
+              providerRef: mapped.providerRef,
+              status: "INITIATED",
+              priceCents,
+              feeBps,
+              feeCents,
+              minFeeCents,
+              totalChargeCents,
+            },
+          });
+        });
+
+        const payload = {
+          escrow,
+          instructions: instructionsForManualMethod(method, escrow.id, escrow.totalChargeCents),
+        };
+
+        if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
+        return send(res, 200, payload);
+      }
+
+      // -----------------------------------------------------------------------
+      // Intent: checkout (Stripe)  (kept; you can remove later)
       // -----------------------------------------------------------------------
       if (intent === "checkout") {
         if (!checkRateLimitOr429(req, res, { scope: "post:checkout", limit: 10, windowMs: 60_000 }))
@@ -643,14 +778,12 @@ export default async function handler(req, res) {
 
         const stripe = getStripe();
 
-        // Try to reuse a recent open session to be idempotent-ish
-        // (This prevents multiple purchases from retries/double-clicks.)
         const recent = await prisma.purchase.findFirst({
           where: {
             listingId: listing.id,
             buyerId: decoded.uid,
             stripeSessionId: { not: null },
-            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) }, // 2 hours
+            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
           },
           orderBy: { createdAt: "desc" },
           select: { id: true, stripeSessionId: true },
@@ -665,11 +798,10 @@ export default async function handler(req, res) {
               return send(res, 200, payload);
             }
           } catch {
-            // ignore and create new session
+            // ignore
           }
         }
 
-        // Stripe idempotency key (if provided) helps if Stripe itself retries
         const stripeIdemKey = idemKey ? `checkout:${decoded.uid}:${listing.id}:${idemKey}` : undefined;
 
         const session = await stripe.checkout.sessions.create(
@@ -683,23 +815,15 @@ export default async function handler(req, res) {
                 price_data: {
                   currency: "usd",
                   unit_amount: listing.price * 100,
-                  product_data: {
-                    name: listing.title,
-                    images: listing.image ? [listing.image] : [],
-                  },
+                  product_data: { name: listing.title, images: listing.image ? [listing.image] : [] },
                 },
               },
             ],
-            metadata: {
-              listingId: listing.id,
-              buyerId: decoded.uid,
-              sellerId: listing.sellerId,
-            },
+            metadata: { listingId: listing.id, buyerId: decoded.uid, sellerId: listing.sellerId },
           },
           stripeIdemKey ? { idempotencyKey: stripeIdemKey } : undefined
         );
 
-        // Create purchase record once per session
         await prisma.purchase.create({
           data: {
             listingId: listing.id,
@@ -712,13 +836,11 @@ export default async function handler(req, res) {
 
         const payload = { checkoutUrl: session.url };
         if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
-
         return send(res, 200, payload);
       }
 
       // -----------------------------------------------------------------------
-      // Default: Create / Update listing (upsert behavior based on body.id)
-      // Adds income/expense support.
+      // Default: Create / Update listing
       // -----------------------------------------------------------------------
       if (!checkRateLimitOr429(req, res, { scope: "post:upsertListing", limit: 30, windowMs: 60_000 }))
         return;
@@ -729,8 +851,8 @@ export default async function handler(req, res) {
         platform,
         categoryId,
         price,
-        income, // NEW
-        expense, // NEW
+        income,
+        expense,
         description,
         image,
         images,
@@ -753,7 +875,6 @@ export default async function handler(req, res) {
         return send(res, 400, { message: "Invalid expense (must be a number >= 0, or null)" });
       }
 
-      // Ensure user exists + role (admin-only categories)
       const dbUser = await prisma.user.upsert({
         where: { id: decoded.uid },
         update: { email: decoded.email ?? "unknown" },
@@ -761,14 +882,12 @@ export default async function handler(req, res) {
         select: { id: true, role: true },
       });
 
-      // Validate platform
       const platformRow = await prisma.platform.findFirst({
         where: { name: platform, isActive: true },
         select: { id: true },
       });
       if (!platformRow) return send(res, 400, { message: "Invalid or inactive platform" });
 
-      // Validate category + enforce admin-only
       let categoryToSet = null;
       if (categoryId) {
         const cat = await prisma.category.findUnique({
@@ -783,21 +902,14 @@ export default async function handler(req, res) {
         categoryToSet = cat.id;
       }
 
-      // Build final image gallery (max 6)
       const extraImages = cleanImageList(images);
       const cover = typeof image === "string" && image.trim() ? image.trim() : extraImages[0];
-
       if (!cover) return send(res, 400, { message: "Missing cover image" });
 
-      // Put cover first, remove duplicates, keep max 6
       const finalImages = cleanImageList([cover, ...extraImages]).slice(0, 6);
       if (finalImages.length === 0) return send(res, 400, { message: "Missing images" });
 
-      // -------------------
-      // Update
-      // -------------------
       if (id) {
-        // Reduce race conditions: lock listing row "logically" per id
         const updated = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `listing:update:${id}`);
 
@@ -820,8 +932,8 @@ export default async function handler(req, res) {
               platform,
               categoryId: categoryToSet,
               price: Math.trunc(numericPrice),
-              income: numericIncome, // NEW (undefined => no change, null => clear)
-              expense: numericExpense, // NEW
+              income: numericIncome,
+              expense: numericExpense,
               description,
               image: finalImages[0],
               images: finalImages,
@@ -847,17 +959,14 @@ export default async function handler(req, res) {
         return send(res, 200, { listing: updated });
       }
 
-      // -------------------
-      // Create
-      // -------------------
       const created = await prisma.listing.create({
         data: {
           title,
           platform,
           categoryId: categoryToSet,
           price: Math.trunc(numericPrice),
-          income: numericIncome ?? null, // NEW
-          expense: numericExpense ?? null, // NEW
+          income: numericIncome ?? null,
+          expense: numericExpense ?? null,
           description,
           image: finalImages[0],
           images: finalImages,
