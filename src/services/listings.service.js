@@ -185,4 +185,7 @@ export const listingsService = {
     const cfg = withIdempotencyHeader(withDeviceHeader(), idem);
     return api.post("/listings", { intent: "addListingBid", listingId, amount }, cfg).then((r) => r.data);
   },
+
+  startEscrow: (listingId, method) =>
+  api.post("/listings", { intent: "startEscrow", listingId, method }).then((r) => r.data),
 };

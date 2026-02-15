@@ -22,6 +22,7 @@ import FeedPostDetails from "./pages/FeedPostDetails";
 import { Toaster } from "./components/ui/toaster";
 
 import usePresencePing from "./hooks/usePresencePing";
+import CheckoutPage from "./pages/CheckoutPage";
 
 export default function App() {
   usePresencePing();
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/listings/:id" element={<ListingDetails />} />
+        <Route path="/checkout/:listingId" element={<CheckoutPage />} />
      
 
         <Route

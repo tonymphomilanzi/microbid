@@ -6,6 +6,8 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
+import { useNavigate } from "react-router-dom";
+import PaymentMethodModal from "../components/checkout/PaymentMethodModal";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../components/ui/drawer";
 import {
   AlertDialog,
@@ -65,6 +67,11 @@ function moneyOrDash(v) {
 }
 
 export default function ListingDetails() {
+
+  const navigate = useNavigate();
+const [buyOpen, setBuyOpen] = useState(false);
+
+
   const { id } = useParams();
   const { user, authReady, openAuthModal } = useAuth();
   const { toast } = useToast();
@@ -352,15 +359,15 @@ export default function ListingDetails() {
     }
   }
 
-  async function buy() {
-    try {
-      if (!user) return openAuthModal();
-      const { checkoutUrl } = await listingsService.checkout(id);
-      window.location.href = checkoutUrl;
-    } catch (e) {
-      alert(e?.response?.data?.message || e.message || "Checkout failed");
-    }
-  }
+ function buy() {
+  if (!user) return openAuthModal();
+  setBuyOpen(true);
+}
+
+function onChoosePayment(method) {
+  setBuyOpen(false);
+  navigate(`/checkout/${id}?method=${encodeURIComponent(method)}`);
+}
 
   function chat() {
     if (!user) return openAuthModal();
@@ -625,7 +632,7 @@ export default function ListingDetails() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button onClick={buy} className="gap-2">
                 <CreditCard className="h-4 w-4" />
-                Buy with Stripe
+                Buy
               </Button>
 
               <Button
@@ -889,6 +896,14 @@ export default function ListingDetails() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+
+        <PaymentMethodModal
+  open={buyOpen}
+  onOpenChange={setBuyOpen}
+  priceUsd={listing.price}
+  onNext={onChoosePayment}
+/>
       </div>
     </PageContainer>
   );
