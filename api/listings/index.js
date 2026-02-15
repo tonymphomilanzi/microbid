@@ -191,8 +191,38 @@ async function getAppConfigCached() {
   return cfg;
 }
 
+/////////////////////////////////////////////////
+function validateManualConfigForMethod(cfg, method) {
+  const missing = [];
+
+  const has = (v) => Boolean(v && String(v).trim());
+
+  if (method === "BTC") {
+    if (!has(cfg?.companyBtcAddress)) missing.push("Bitcoin address");
+  }
+
+  if (method === "MOMO") {
+    if (!has(cfg?.companyMomoNumber)) missing.push("MoMo number");
+    if (!has(cfg?.companyMomoName)) missing.push("MoMo account name");
+  }
+
+  if (method === "WU") {
+    if (!has(cfg?.companyWuName)) missing.push("Western Union receiver name");
+    if (!has(cfg?.companyWuCountry)) missing.push("Western Union receiver country");
+  }
+
+  if (method === "BANK") {
+    if (!has(cfg?.companyBankName)) missing.push("Bank name");
+    if (!has(cfg?.companyBankAccountName)) missing.push("Bank account name");
+    if (!has(cfg?.companyBankAccountNumber)) missing.push("Bank account number");
+  }
+
+  return missing;
+}
+
 function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
   const totalUsd = (Number(totalChargeCents || 0) / 100).toFixed(2);
+  const safe = (v) => (v && String(v).trim() ? String(v).trim() : "Not set");
 
   if (method === "BTC") {
     return {
@@ -201,8 +231,8 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
         `Reference code: ${escrowId}. Keep it for proof.`,
       ],
       fields: [
-        { label: "BTC Address", value: cfg?.companyBtcAddress || "" },
-        { label: "Network", value: cfg?.companyBtcNetwork || "Bitcoin" },
+        { label: "BTC Address", value: safe(cfg?.companyBtcAddress) },
+        { label: "Network", value: safe(cfg?.companyBtcNetwork || "Bitcoin") },
       ],
     };
   }
@@ -214,9 +244,9 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
         `Use reference code: ${escrowId} as the payment reference.`,
       ],
       fields: [
-        { label: "Account Name", value: cfg?.companyMomoName || "" },
-        { label: "MoMo Number", value: cfg?.companyMomoNumber || "" },
-        { label: "Country", value: cfg?.companyMomoCountry || "" },
+        { label: "Account Name", value: safe(cfg?.companyMomoName) },
+        { label: "MoMo Number", value: safe(cfg?.companyMomoNumber) },
+        { label: "Country", value: safe(cfg?.companyMomoCountry) },
       ],
     };
   }
@@ -228,9 +258,9 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
         `Use reference code: ${escrowId} (if possible).`,
       ],
       fields: [
-        { label: "Receiver Name", value: cfg?.companyWuName || "" },
-        { label: "Receiver Country", value: cfg?.companyWuCountry || "" },
-        { label: "Receiver City", value: cfg?.companyWuCity || "" },
+        { label: "Receiver Name", value: safe(cfg?.companyWuName) },
+        { label: "Receiver Country", value: safe(cfg?.companyWuCountry) },
+        { label: "Receiver City", value: safe(cfg?.companyWuCity) },
       ],
     };
   }
@@ -242,11 +272,11 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
       `Put reference code: ${escrowId} in the transfer memo/reference.`,
     ],
     fields: [
-      { label: "Bank Name", value: cfg?.companyBankName || "" },
-      { label: "Account Name", value: cfg?.companyBankAccountName || "" },
-      { label: "Account Number", value: cfg?.companyBankAccountNumber || "" },
-      { label: "SWIFT / IBAN", value: cfg?.companyBankSwift || "" },
-      { label: "Country", value: cfg?.companyBankCountry || "" },
+      { label: "Bank Name", value: safe(cfg?.companyBankName) },
+      { label: "Account Name", value: safe(cfg?.companyBankAccountName) },
+      { label: "Account Number", value: safe(cfg?.companyBankAccountNumber) },
+      { label: "SWIFT / IBAN", value: safe(cfg?.companyBankSwift) },
+      { label: "Country", value: safe(cfg?.companyBankCountry) },
     ],
   };
 }
@@ -254,69 +284,7 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 // Deposit instructions builder (company-controlled)
 // Put these in Vercel env vars so you can change without code edits.
 // -----------------------------
-function instructionsForManualMethod(method, escrowId, totalChargeCents) {
-  const totalUsd = (Number(totalChargeCents || 0) / 100).toFixed(2);
 
-  if (method === "BTC") {
-    return {
-      lines: [
-        `Send exactly $${totalUsd} worth of BTC to the address below.`,
-        `Reference code: ${escrowId}. Keep it for proof.`,
-        "After payment, keep your transaction hash as proof (proof upload can be added later).",
-      ],
-      fields: [
-        { label: "BTC Address", value: process.env.COMPANY_BTC_ADDRESS || "SET_COMPANY_BTC_ADDRESS" },
-        { label: "Network", value: process.env.COMPANY_BTC_NETWORK || "Bitcoin" },
-      ],
-    };
-  }
-
-  if (method === "MOMO") {
-    return {
-      lines: [
-        `Send exactly $${totalUsd} (or equivalent) to the Mobile Money details below.`,
-        `Use reference code: ${escrowId} as the payment reference.`,
-        "Keep the SMS/receipt as proof.",
-      ],
-      fields: [
-        { label: "Account Name", value: process.env.COMPANY_MOMO_NAME || "SET_COMPANY_MOMO_NAME" },
-        { label: "MoMo Number", value: process.env.COMPANY_MOMO_NUMBER || "SET_COMPANY_MOMO_NUMBER" },
-        { label: "Country", value: process.env.COMPANY_MOMO_COUNTRY || "SET_COMPANY_MOMO_COUNTRY" },
-      ],
-    };
-  }
-
-  if (method === "WU") {
-    return {
-      lines: [
-        `Send exactly $${totalUsd} via Western Union.`,
-        `Use reference code: ${escrowId} (if a note/message is possible).`,
-        "Keep the MTCN code as proof.",
-      ],
-      fields: [
-        { label: "Receiver Name", value: process.env.COMPANY_WU_NAME || "SET_COMPANY_WU_NAME" },
-        { label: "Receiver Country", value: process.env.COMPANY_WU_COUNTRY || "SET_COMPANY_WU_COUNTRY" },
-        { label: "Receiver City", value: process.env.COMPANY_WU_CITY || "SET_COMPANY_WU_CITY" },
-      ],
-    };
-  }
-
-  // BANK
-  return {
-    lines: [
-      `Send exactly $${totalUsd} via bank transfer.`,
-      `Put reference code: ${escrowId} in the transfer reference/memo.`,
-      "Keep the transfer receipt as proof.",
-    ],
-    fields: [
-      { label: "Bank Name", value: process.env.COMPANY_BANK_NAME || "SET_COMPANY_BANK_NAME" },
-      { label: "Account Name", value: process.env.COMPANY_BANK_ACCOUNT_NAME || "SET_COMPANY_BANK_ACCOUNT_NAME" },
-      { label: "Account Number", value: process.env.COMPANY_BANK_ACCOUNT_NUMBER || "SET_COMPANY_BANK_ACCOUNT_NUMBER" },
-      { label: "IBAN / SWIFT (optional)", value: process.env.COMPANY_BANK_SWIFT || "OPTIONAL" },
-      { label: "Country", value: process.env.COMPANY_BANK_COUNTRY || "SET_COMPANY_BANK_COUNTRY" },
-    ],
-  };
-}
 
 // -----------------------------
 // Main handler
@@ -768,15 +736,22 @@ export default async function handler(req, res) {
         }
 
         // Defaults: 2% fee
-  const cfg = await getAppConfigCached();
+ const cfg = await getAppConfigCached();
+
+// Block checkout if admin hasn’t configured deposit details for the chosen method
+const missing = validateManualConfigForMethod(cfg, method);
+if (missing.length) {
+  return send(res, 400, {
+    message: `Payment method is not configured: missing ${missing.join(", ")}. Ask admin to update Admin → Settings.`,
+  });
+}
 
 const feeBps = Number(cfg?.escrowFeeBps ?? 200);
-const minFeeCents = Number(process.env.ESCROW_MIN_FEE_CENTS ?? 0); // optional keep as env
 
+// If you want ZERO env usage, keep minFeeCents hard-coded for now:
+const minFeeCents = 0;
 
-        // Not a relation in your schema, so any string is acceptable.
-        // Set this in Vercel env to your company/admin uid (or a system string).
-       const escrowAgentId = String(cfg?.escrowAgentUid || "SYSTEM");
+const escrowAgentId = String(cfg?.escrowAgentUid || "SYSTEM");
 
         const escrow = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `escrow:start:${listingId}:${decoded.uid}:${method}`);
