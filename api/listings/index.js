@@ -1,22 +1,24 @@
 // /api/listings/index.js
 // -----------------------------------------------------------------------------
-// What this file does (routes):
+// Routes:
 //   GET  /api/listings
 //   GET  /api/listings?public=listingComments&listingId=...
 //   GET  /api/listings?public=listingBids&listingId=...
-//   POST /api/listings  (intents)
+//
+//   POST /api/listings (auth) intents:
 //     - toggleListingLike
 //     - addListingComment
 //     - addListingBid
-//     - startEscrow   ✅ (MANUAL checkout: BTC / WU / MOMO / BANK)
-//     - checkout (Stripe)  (kept for now; you can remove later)
+//     - startEscrow     (manual checkout: BTC / WU / MOMO / BANK)  ✅ uses DB AppConfig (NOT env)
+//     - checkout        (Stripe) (kept for now)
 //     - create/update listing (default when no intent)
 //
-// Improvements added (without breaking response shapes your UI expects):
-//   ✅ income/expense support for listings (create + update)
-//   ✅ best-effort rate limiting (in-memory; works per warm lambda instance)
-//   ✅ race-condition reduction using Postgres advisory locks
-//   ✅ best-effort idempotency (header/body key + dedupe windows for bids/comments/checkout/startEscrow)
+// Improvements:
+//   ✅ safe query parsing (fixes Vercel cases where req.query is undefined -> 500)
+//   ✅ rate limiting (in-memory; per warm instance)
+//   ✅ advisory locks (reduce races)
+//   ✅ idempotency cache (best-effort; per warm instance)
+//   ✅ income/expense supported
 // -----------------------------------------------------------------------------
 
 import { prisma } from "../_lib/prisma.js";
@@ -24,12 +26,29 @@ import { requireAuth } from "../_lib/auth.js";
 import { getStripe } from "../_lib/stripe.js";
 
 // -----------------------------
-// Small utilities
+// Response helper
 // -----------------------------
 function send(res, status, json) {
   return res.status(status).json(json);
 }
 
+// -----------------------------
+// Query parsing (IMPORTANT for Vercel)
+// Some runtimes don't provide req.query, so we parse from req.url as fallback.
+// -----------------------------
+function qv(v) {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function getQuery(req) {
+  if (req?.query && typeof req.query === "object") return req.query;
+  const url = new URL(req.url || "", "http://localhost");
+  return Object.fromEntries(url.searchParams.entries());
+}
+
+// -----------------------------
+// Misc utilities
+// -----------------------------
 function getClientIp(req) {
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length) return xff.split(",")[0].trim();
@@ -71,8 +90,9 @@ async function optionalAuthUid(req) {
 }
 
 function toNumberOrUndefined(v) {
-  if (v === undefined || v === null || v === "") return undefined;
-  const n = Number(v);
+  const x = qv(v);
+  if (x === undefined || x === null || x === "") return undefined;
+  const n = Number(x);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -117,7 +137,7 @@ function getIdempotencyKey(req, body) {
 }
 
 // -----------------------------
-// Best-effort rate limiter (in-memory)
+// Rate limiting (in-memory)
 // -----------------------------
 const RL_BUCKETS = new Map(); // key -> { count, resetAt }
 function rateLimit({ key, limit, windowMs }) {
@@ -128,10 +148,7 @@ function rateLimit({ key, limit, windowMs }) {
     RL_BUCKETS.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, remaining: limit - 1, resetAt: now + windowMs };
   }
-
-  if (cur.count >= limit) {
-    return { allowed: false, remaining: 0, resetAt: cur.resetAt };
-  }
+  if (cur.count >= limit) return { allowed: false, remaining: 0, resetAt: cur.resetAt };
 
   cur.count += 1;
   return { allowed: true, remaining: Math.max(0, limit - cur.count), resetAt: cur.resetAt };
@@ -151,7 +168,7 @@ function checkRateLimitOr429(req, res, { scope, limit, windowMs }) {
 }
 
 // -----------------------------
-// Best-effort idempotency cache (in-memory)
+// Idempotency cache (in-memory)
 // -----------------------------
 const IDEM = new Map(); // key -> { expiresAt, status, body }
 function getCachedIdem(key) {
@@ -168,49 +185,59 @@ function setCachedIdem(key, status, body, ttlMs = 2 * 60 * 1000) {
 }
 
 // -----------------------------
-// Advisory locks (race reduction)
+// Advisory lock (race reduction)
 // -----------------------------
 async function advisoryLock(tx, lockKey) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 }
 
-
-// cached singleton config (reduces DB hits)
+// -----------------------------
+// AppConfig (DB settings) for manual checkout
+// Requires Prisma model AppConfig.
+// -----------------------------
 const APP_CONFIG_CACHE = { value: null, exp: 0 };
+
+function requireAppConfigModel() {
+  if (!prisma.appConfig) {
+    const err = new Error(
+      "Prisma Client missing AppConfig. Add AppConfig to schema.prisma, run `npx prisma generate`, then redeploy."
+    );
+    err.statusCode = 500;
+    throw err;
+  }
+  return prisma.appConfig;
+}
 
 async function getAppConfigCached() {
   const now = Date.now();
   if (APP_CONFIG_CACHE.value && now < APP_CONFIG_CACHE.exp) return APP_CONFIG_CACHE.value;
 
+  const AppConfig = requireAppConfigModel();
+
   const cfg =
-    (await prisma.appConfig.findUnique({ where: { id: "global" } }).catch(() => null)) ||
-    (await prisma.appConfig.create({ data: { id: "global", escrowFeeBps: 200 } }).catch(() => null));
+    (await AppConfig.findUnique({ where: { id: "global" } }).catch(() => null)) ||
+    (await AppConfig.create({ data: { id: "global", escrowFeeBps: 200 } }).catch(() => null));
 
   APP_CONFIG_CACHE.value = cfg;
   APP_CONFIG_CACHE.exp = now + 30_000; // 30s cache
   return cfg;
 }
 
-/////////////////////////////////////////////////
 function validateManualConfigForMethod(cfg, method) {
   const missing = [];
-
   const has = (v) => Boolean(v && String(v).trim());
 
   if (method === "BTC") {
     if (!has(cfg?.companyBtcAddress)) missing.push("Bitcoin address");
   }
-
   if (method === "MOMO") {
-    if (!has(cfg?.companyMomoNumber)) missing.push("MoMo number");
     if (!has(cfg?.companyMomoName)) missing.push("MoMo account name");
+    if (!has(cfg?.companyMomoNumber)) missing.push("MoMo number");
   }
-
   if (method === "WU") {
-    if (!has(cfg?.companyWuName)) missing.push("Western Union receiver name");
-    if (!has(cfg?.companyWuCountry)) missing.push("Western Union receiver country");
+    if (!has(cfg?.companyWuName)) missing.push("WU receiver name");
+    if (!has(cfg?.companyWuCountry)) missing.push("WU receiver country");
   }
-
   if (method === "BANK") {
     if (!has(cfg?.companyBankName)) missing.push("Bank name");
     if (!has(cfg?.companyBankAccountName)) missing.push("Bank account name");
@@ -280,25 +307,23 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
     ],
   };
 }
-// -----------------------------
-// Deposit instructions builder (company-controlled)
-// Put these in Vercel env vars so you can change without code edits.
-// -----------------------------
-
 
 // -----------------------------
 // Main handler
 // -----------------------------
 export default async function handler(req, res) {
   try {
+    const query = getQuery(req);
+
     // -------------------------------------------------------------------------
     // PUBLIC GET: listing comments
+    // GET /api/listings?public=listingComments&listingId=...
     // -------------------------------------------------------------------------
-    if (req.method === "GET" && req.query?.public === "listingComments") {
+    if (req.method === "GET" && qv(query?.public) === "listingComments") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listingComments", limit: 60, windowMs: 60_000 }))
         return;
 
-      const listingId = String(req.query?.listingId || "");
+      const listingId = String(qv(query?.listingId) || "");
       if (!listingId) return send(res, 400, { message: "listingId is required" });
 
       const comments = await prisma.listingComment.findMany({
@@ -325,12 +350,13 @@ export default async function handler(req, res) {
 
     // -------------------------------------------------------------------------
     // PUBLIC GET: listing bids
+    // GET /api/listings?public=listingBids&listingId=...
     // -------------------------------------------------------------------------
-    if (req.method === "GET" && req.query?.public === "listingBids") {
+    if (req.method === "GET" && qv(query?.public) === "listingBids") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listingBids", limit: 60, windowMs: 60_000 }))
         return;
 
-      const listingId = String(req.query?.listingId || "");
+      const listingId = String(qv(query?.listingId) || "");
       if (!listingId) return send(res, 400, { message: "listingId is required" });
 
       const bids = await prisma.listingBid.findMany({
@@ -365,12 +391,17 @@ export default async function handler(req, res) {
 
     // -------------------------------------------------------------------------
     // PUBLIC GET: list listings
+    // GET /api/listings
     // -------------------------------------------------------------------------
     if (req.method === "GET") {
       if (!checkRateLimitOr429(req, res, { scope: "get:listings", limit: 120, windowMs: 60_000 }))
         return;
 
-      const { platform, categoryId, q, minPrice, maxPrice } = req.query;
+      const platform = qv(query?.platform);
+      const categoryId = qv(query?.categoryId);
+      const q = qv(query?.q);
+      const minPrice = qv(query?.minPrice);
+      const maxPrice = qv(query?.maxPrice);
 
       const minP = toNumberOrUndefined(minPrice);
       const maxP = toNumberOrUndefined(maxPrice);
@@ -382,8 +413,8 @@ export default async function handler(req, res) {
         ...(q
           ? {
               OR: [
-                { title: { contains: q, mode: "insensitive" } },
-                { description: { contains: q, mode: "insensitive" } },
+                { title: { contains: String(q), mode: "insensitive" } },
+                { description: { contains: String(q), mode: "insensitive" } },
               ],
             }
           : {}),
@@ -593,7 +624,7 @@ export default async function handler(req, res) {
             try {
               await tx.listingLike.create({ data: { listingId, userId: decoded.uid } });
             } catch {
-              // ignore (unique race)
+              // ignore unique race
             }
           }
 
@@ -688,19 +719,13 @@ export default async function handler(req, res) {
       }
 
       // -----------------------------------------------------------------------
-      // Intent: startEscrow  ✅ MANUAL PAYMENTS (BTC / WU / MOMO / BANK)
-      //
-      // Uses your Prisma model EscrowTransaction:
-      //   provider: BTC | MOMO | MANUAL
-      //   providerRef: "WU" or "BANK" when provider=MANUAL
-      // Fee: default 2% (200 bps). Admin-configurable later; for now env-based.
-      //
-      // Response shape for frontend:
-      //   { escrow: EscrowTransaction, instructions: { lines:[], fields:[] } }
+      // Intent: startEscrow (manual checkout)
+      // Uses DB AppConfig (Admin → Settings) for:
+      //  - escrow fee bps
+      //  - deposit details shown to buyer
+      // NOTE: escrowAgentId is forced to "SYSTEM" (no admin typing)
       // -----------------------------------------------------------------------
       if (intent === "startEscrow") {
-
-        
         if (!checkRateLimitOr429(req, res, { scope: "post:startEscrow", limit: 20, windowMs: 60_000 }))
           return;
 
@@ -710,9 +735,6 @@ export default async function handler(req, res) {
         if (!listingId) return send(res, 400, { message: "Missing listingId" });
         if (!method) return send(res, 400, { message: "Missing method" });
 
-        // UI methods -> Prisma enums
-        // Your PaymentProvider enum supports BTC, MOMO, MANUAL.
-        // WU/BANK are represented as provider=MANUAL + providerRef.
         const map = {
           BTC: { provider: "BTC", providerRef: null },
           MOMO: { provider: "MOMO", providerRef: null },
@@ -728,37 +750,26 @@ export default async function handler(req, res) {
           select: { id: true, title: true, price: true, status: true, sellerId: true },
         });
 
-        if (!listing || listing.status !== "ACTIVE") {
-          return send(res, 404, { message: "Listing not available" });
+        if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
+        if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
+
+        const cfg = await getAppConfigCached();
+
+        // If admin hasn't configured deposit details, block checkout (prevents blank instructions)
+        const missing = validateManualConfigForMethod(cfg, method);
+        if (missing.length) {
+          return send(res, 400, {
+            message: `Payment method not configured: missing ${missing.join(", ")}. Ask admin to update Admin → Settings.`,
+          });
         }
-        if (listing.sellerId === decoded.uid) {
-          return send(res, 403, { message: "You cannot buy your own listing." });
-        }
 
-        // Defaults: 2% fee
- const cfg = await getAppConfigCached();
-
-// Block checkout if admin hasn’t configured deposit details for the chosen method
-const missing = validateManualConfigForMethod(cfg, method);
-if (missing.length) {
-  return send(res, 400, {
-    message: `Payment method is not configured: missing ${missing.join(", ")}. Ask admin to update Admin → Settings.`,
-  });
-}
-
-const feeBps = Number(cfg?.escrowFeeBps ?? 200);
-
-// If you want ZERO env usage, keep minFeeCents hard-coded for now:
-const minFeeCents = 0;
-
-//const escrowAgentId = String(cfg?.escrowAgentUid || "SYSTEM");
-const escrowAgentId = "SYSTEM";
+        const feeBps = Number(cfg?.escrowFeeBps ?? 200);
+        const minFeeCents = 0; // keep 0 for now (you can add to AppConfig later if you want)
+        const escrowAgentId = "SYSTEM";
 
         const escrow = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `escrow:start:${listingId}:${decoded.uid}:${method}`);
 
-          // Idempotency without requiring a key:
-          // reuse latest "open" escrow for buyer+listing+method if it exists.
           const existing = await tx.escrowTransaction.findFirst({
             where: {
               listingId,
@@ -805,17 +816,17 @@ const escrowAgentId = "SYSTEM";
           });
         });
 
-      const payload = {
-  escrow,
-  instructions: instructionsFromConfig(cfg, method, escrow.id, escrow.totalChargeCents),
-};
+        const payload = {
+          escrow,
+          instructions: instructionsFromConfig(cfg, method, escrow.id, escrow.totalChargeCents),
+        };
 
-if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
-return send(res, 200, payload);
+        if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
+        return send(res, 200, payload);
       }
 
       // -----------------------------------------------------------------------
-      // Intent: checkout (Stripe)  (kept; you can remove later)
+      // Intent: checkout (Stripe) (kept for now)
       // -----------------------------------------------------------------------
       if (intent === "checkout") {
         if (!checkRateLimitOr429(req, res, { scope: "post:checkout", limit: 10, windowMs: 60_000 }))
@@ -829,9 +840,7 @@ return send(res, 200, payload);
           include: { seller: true },
         });
 
-        if (!listing || listing.status !== "ACTIVE") {
-          return send(res, 404, { message: "Listing not available" });
-        }
+        if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
 
         const stripe = getStripe();
 
@@ -872,7 +881,10 @@ return send(res, 200, payload);
                 price_data: {
                   currency: "usd",
                   unit_amount: listing.price * 100,
-                  product_data: { name: listing.title, images: listing.image ? [listing.image] : [] },
+                  product_data: {
+                    name: listing.title,
+                    images: listing.image ? [listing.image] : [],
+                  },
                 },
               },
             ],
@@ -897,7 +909,7 @@ return send(res, 200, payload);
       }
 
       // -----------------------------------------------------------------------
-      // Default: Create / Update listing
+      // Default: Create / Update listing (income/expense supported)
       // -----------------------------------------------------------------------
       if (!checkRateLimitOr429(req, res, { scope: "post:upsertListing", limit: 30, windowMs: 60_000 }))
         return;
@@ -1051,6 +1063,8 @@ return send(res, 200, payload);
     res.setHeader("Allow", "GET, POST");
     return send(res, 405, { message: "Method not allowed" });
   } catch (e) {
+    // Helpful for Vercel logs when something becomes a 500
+    console.error("API /listings error:", e);
     return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
   }
 }
