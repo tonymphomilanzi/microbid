@@ -52,6 +52,8 @@ export default function CreateListingForm({ initial }) {
     platform: "",
     categoryId: "",
     price: "",
+    income: "",   // NEW
+    expense: "", //NEW
     description: "",
     image: "", // cover image
     images: [], // extra gallery images (max 6)
@@ -115,6 +117,8 @@ export default function CreateListingForm({ initial }) {
       platform: initial.platform ?? "YouTube",
       categoryId: initial.categoryId ?? "",
       price: String(initial.price ?? ""),
+      income: initial.income == null ? "" : String(initial.income),     // NEW
+      expense: initial.expense == null ? "" : String(initial.expense),  // NEW
       description: initial.description ?? "",
       image: initial.image ?? "",
       images: initial.images ?? [], // <-- important
@@ -190,6 +194,8 @@ export default function CreateListingForm({ initial }) {
       const payload = {
         ...form,
         price: Number(form.price),
+        income: String(form.income).trim() === "" ? null : Number(form.income),     // NEW
+        expense: String(form.expense).trim() === "" ? null : Number(form.expense), // NEW
         metrics: form.metrics ?? null,
         categoryId: form.categoryId || null,
         images: (form.images ?? []).filter(Boolean).slice(0, MAX_EXTRA_IMAGES),
@@ -286,6 +292,28 @@ export default function CreateListingForm({ initial }) {
                     Enter the full price in USD (numbers only).
                   </p>
                 </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  <div  className="sm:col-span-2">
+    <Label>Income (USD / month)</Label>
+    <Input
+      placeholder="e.g. 500"
+      inputMode="numeric"
+      value={form.income}
+      onChange={(e) => setForm((f) => ({ ...f, income: e.target.value }))}
+    />
+  </div>
+
+  <div  className="sm:col-span-2">
+    <Label>Expenses (USD / month)</Label>
+    <Input
+      placeholder="e.g. 120"
+      inputMode="numeric"
+      value={form.expense}
+      onChange={(e) => setForm((f) => ({ ...f, expense: e.target.value }))}
+    />
+  </div>
+</div>
               </div>
 
               <div>

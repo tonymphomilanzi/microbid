@@ -123,6 +123,12 @@ model Listing {
 
   views ListingView[]
   bids ListingBid[]
+
+
+   // NEW
+  income  Int? // e.g. 500 = $500/month (nullable if unknown)
+  expense Int? // e.g. 120 = $120/month
+
 }
 
 model Purchase {
