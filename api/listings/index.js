@@ -751,7 +751,8 @@ const feeBps = Number(cfg?.escrowFeeBps ?? 200);
 // If you want ZERO env usage, keep minFeeCents hard-coded for now:
 const minFeeCents = 0;
 
-const escrowAgentId = String(cfg?.escrowAgentUid || "SYSTEM");
+//const escrowAgentId = String(cfg?.escrowAgentUid || "SYSTEM");
+const escrowAgentId = "SYSTEM";
 
         const escrow = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `escrow:start:${listingId}:${decoded.uid}:${method}`);

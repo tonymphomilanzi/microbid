@@ -165,7 +165,8 @@ export default function AdminSettings() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+          {/** *  <div>
+                
               <div className="text-xs text-muted-foreground mb-1">Escrow Agent UID</div>
               <Input
                 placeholder='e.g. "SYSTEM" or admin uid'
@@ -175,7 +176,7 @@ export default function AdminSettings() {
               <div className="mt-1 text-xs text-muted-foreground">
                 Stored in DB. Used to fill <code>escrowAgentId</code> on new transactions.
               </div>
-            </div>
+            </div>*/} 
 
             <div>
               <div className="text-xs text-muted-foreground mb-1">Escrow Fee (bps)</div>
@@ -311,7 +312,7 @@ export default function AdminSettings() {
             // reset draft to last loaded settings
             const s = settings || {};
             setDraft({
-              escrowAgentUid: s?.escrowAgentUid ?? "",
+              //escrowAgentUid: s?.escrowAgentUid ?? "",
               escrowFeeBps: s?.escrowFeeBps ?? 200,
 
               companyBtcAddress: s?.companyBtcAddress ?? "",

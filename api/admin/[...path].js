@@ -89,7 +89,7 @@ export default async function handler(req, res) {
           where: { id: "global" },
           create: {
             id: "global",
-            escrowAgentUid: strOrNullOrUndefined(s.escrowAgentUid) ?? null,
+           escrowAgentUid: "SYSTEM",
             escrowFeeBps: escrowFeeBps ?? 200,
 
             companyBtcAddress: strOrNullOrUndefined(s.companyBtcAddress) ?? null,
@@ -110,7 +110,8 @@ export default async function handler(req, res) {
             companyBankCountry: strOrNullOrUndefined(s.companyBankCountry) ?? null,
           },
           update: {
-            escrowAgentUid: strOrNullOrUndefined(s.escrowAgentUid),
+            //escrowAgentUid: strOrNullOrUndefined(s.escrowAgentUid),
+            escrowAgentUid: "SYSTEM",
             escrowFeeBps,
 
             companyBtcAddress: strOrNullOrUndefined(s.companyBtcAddress),
