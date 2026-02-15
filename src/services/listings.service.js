@@ -188,4 +188,9 @@ export const listingsService = {
 
   startEscrow: (listingId, method) =>
   api.post("/listings", { intent: "startEscrow", listingId, method }).then((r) => r.data),
+
+  submitEscrowPayment: ({ escrowId, reference, proofUrl, note }) =>
+  api
+    .post("/listings", { intent: "submitEscrowPayment", escrowId, reference, proofUrl, note })
+    .then((r) => r.data),
 };

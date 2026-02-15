@@ -476,6 +476,9 @@ export default async function handler(req, res) {
         if (cached) return send(res, cached.status, cached.body);
       }
 
+
+
+
       // -------- addListingBid --------
       if (intent === "addListingBid") {
         if (!checkRateLimitOr429(req, res, { scope: "post:addListingBid", limit: 20, windowMs: 60_000 }))
@@ -724,6 +727,82 @@ export default async function handler(req, res) {
         if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
         return send(res, 200, payload);
       }
+
+
+      // -----------------------------------------------------------------------
+// Intent: submitEscrowPayment
+// Buyer clicks "I have paid" and submits reference + optional proof URL.
+// Creates EscrowProof(kind=PAYMENT_PROOF) and moves status INITIATED -> FEE_PAID.
+// -----------------------------------------------------------------------
+if (intent === "submitEscrowPayment") {
+  if (!checkRateLimitOr429(req, res, { scope: "post:submitEscrowPayment", limit: 15, windowMs: 60_000 }))
+    return;
+
+  const escrowId = String(body.escrowId || "");
+  const reference = String(body.reference || "").trim(); // tx hash / MTCN / bank ref / momo ref
+  const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
+  const note = body.note ? String(body.note).trim() : null;
+
+  if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
+  if (!reference) return send(res, 400, { message: "Payment reference is required" });
+
+  const result = await prisma.$transaction(async (tx) => {
+    await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
+
+    const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
+    if (!escrow) {
+      const err = new Error("Escrow not found");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (escrow.buyerId !== decoded.uid) {
+      const err = new Error("Forbidden");
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Only allow submitting proof early (adjust later if needed)
+    if (!["INITIATED", "FEE_PAID"].includes(escrow.status)) {
+      const err = new Error(`Cannot submit payment in status ${escrow.status}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Idempotency-ish: if this reference already exists, reuse it
+    const existingProof = await tx.escrowProof.findFirst({
+      where: { escrowId, kind: "PAYMENT_PROOF", note: reference },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const proof =
+      existingProof ||
+      (await tx.escrowProof.create({
+        data: {
+          escrowId,
+          kind: "PAYMENT_PROOF",
+          url: proofUrl,
+          note: reference, // store reference here
+        },
+      }));
+
+    // Move INITIATED -> FEE_PAID (means buyer submitted payment details)
+    const updatedEscrow =
+      escrow.status === "INITIATED"
+        ? await tx.escrowTransaction.update({
+            where: { id: escrowId },
+            data: {
+              status: "FEE_PAID",
+              notes: note ? [escrow.notes, note].filter(Boolean).join("\n") : escrow.notes,
+            },
+          })
+        : escrow;
+
+    return { escrow: updatedEscrow, proof };
+  });
+
+  return send(res, 200, result);
+}
 
       // -------- checkout (Stripe) --------
       if (intent === "checkout") {
