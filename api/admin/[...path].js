@@ -463,6 +463,119 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: "Method not allowed" });
     }
 
+
+    // ---------------- ESCROWS (manual payments moderation) ----------------
+// GET  /api/admin/escrows?status=FEE_PAID&q=...
+// PATCH /api/admin/escrows?id=<escrowId>  body: { intent: "verifyPayment" }
+if (resource === "escrows") {
+  if (req.method === "GET") {
+    const status = url.searchParams.get("status") || "";
+    const q = (url.searchParams.get("q") || "").trim();
+
+    const escrows = await prisma.escrowTransaction.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(q
+          ? {
+              OR: [
+                { id: { contains: q, mode: "insensitive" } },
+                { listing: { title: { contains: q, mode: "insensitive" } } },
+                { buyerId: { contains: q, mode: "insensitive" } },
+                { sellerId: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        listing: { select: { id: true, title: true, price: true, status: true, platform: true } },
+        proofs: { orderBy: { createdAt: "desc" } },
+      },
+    });
+
+    return res.status(200).json({ escrows });
+  }
+
+  if (req.method === "PATCH") {
+    if (!id) return res.status(400).json({ message: "Missing escrow id" });
+    const body = readJson(req);
+
+    if (body.intent !== "verifyPayment") {
+      return res.status(400).json({ message: "Unsupported intent" });
+    }
+
+    const out = await prisma.$transaction(async (tx) => {
+      // lock to make idempotent & race-safe
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`escrow:verify:${id}`}, 0))`;
+
+      const escrow = await tx.escrowTransaction.findUnique({
+        where: { id },
+        include: { listing: true },
+      });
+
+      if (!escrow) {
+        const err = new Error("Escrow not found");
+        err.statusCode = 404;
+        throw err;
+      }
+
+      // Must be paid-submitted to verify
+      if (!["FEE_PAID", "FULLY_PAID"].includes(escrow.status)) {
+        const err = new Error(`Escrow is not ready for verification (status ${escrow.status})`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // If already sold, keep idempotent
+      const existingPurchase = await tx.purchase.findFirst({
+        where: { listingId: escrow.listingId },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const updatedEscrow =
+        escrow.status === "FULLY_PAID"
+          ? escrow
+          : await tx.escrowTransaction.update({
+              where: { id },
+              data: { status: "FULLY_PAID", fundedAt: new Date() },
+            });
+
+      // Mark listing SOLD (prevents any future purchase)
+      await tx.listing.update({
+        where: { id: escrow.listingId },
+        data: { status: "SOLD" },
+      });
+
+      const purchase =
+        existingPurchase ||
+        (await tx.purchase.create({
+          data: {
+            listingId: escrow.listingId,
+            buyerId: escrow.buyerId,
+            sellerId: escrow.sellerId,
+            amount: Math.trunc(Number(escrow.listing?.price ?? 0)),
+            stripeSessionId: `MANUAL:${escrow.id}`, // reuse field to tag manual purchase
+          },
+        }));
+
+      // OPTIONAL: notification hook (replace with your system)
+      // Example fallback: store note in escrow
+      await tx.escrowTransaction.update({
+        where: { id },
+        data: { notes: [escrow.notes, `Verified by admin ${adminUid} at ${new Date().toISOString()}`].filter(Boolean).join("\n") },
+      });
+
+      return { escrow: updatedEscrow, purchase };
+    });
+
+    return res.status(200).json(out);
+  }
+
+  res.setHeader("Allow", "GET, PATCH");
+  return res.status(405).json({ message: "Method not allowed" });
+}
+
     return res.status(404).json({ message: "Unknown admin resource" });
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });

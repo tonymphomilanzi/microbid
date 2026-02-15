@@ -40,4 +40,9 @@ export const adminService = {
   // Settings (Escrow + Payment details)
   getSettings: () => api.get("/admin/settings").then((r) => r.data),
   updateSettings: (payload) => api.patch("/admin/settings", payload).then((r) => r.data),
+
+  // Escrows
+getEscrows: (params) => api.get("/admin/escrows", { params }).then((r) => r.data),
+verifyEscrowPayment: (id) =>
+  api.patch("/admin/escrows", { intent: "verifyPayment" }, { params: { id } }).then((r) => r.data),
 };

@@ -115,6 +115,28 @@ function getIdempotencyKey(req, body) {
   return typeof k === "string" && k.trim() ? k.trim() : null;
 }
 
+async function listingAlreadySoldOrLocked(listingId) {
+  // If any purchase exists => sold (strongest signal)
+  const purchase = await prisma.purchase.findFirst({
+    where: { listingId },
+    select: { id: true },
+  });
+  if (purchase) return { blocked: true, reason: "SOLD" };
+
+  // If someone has submitted payment already => lock it
+  const locked = await prisma.escrowTransaction.findFirst({
+    where: {
+      listingId,
+      status: { in: ["FEE_PAID", "FULLY_PAID"] }, // paid or verified
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, buyerId: true, status: true },
+  });
+
+  if (locked) return { blocked: true, reason: locked.status, buyerId: locked.buyerId, escrowId: locked.id };
+  return { blocked: false };
+}
+
 // -----------------------------
 // Rate limiting (in-memory)
 // -----------------------------
@@ -665,6 +687,16 @@ export default async function handler(req, res) {
         if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
 
+        const lock = await listingAlreadySoldOrLocked(listingId);
+if (lock.blocked && lock.buyerId !== decoded.uid) {
+  return send(res, 409, { message: "This listing is already reserved or sold." });
+}
+if (lock.blocked && lock.reason === "SOLD") {
+  // Optionally sync listing status
+  await prisma.listing.update({ where: { id: listingId }, data: { status: "SOLD" } }).catch(() => {});
+  return send(res, 409, { message: "This listing is already sold." });
+}
+
         const cfg = await getAppConfigCached();
         const missing = validateManualConfigForMethod(cfg, method);
         if (missing.length) {
@@ -739,7 +771,7 @@ if (intent === "submitEscrowPayment") {
     return;
 
   const escrowId = String(body.escrowId || "");
-  const reference = String(body.reference || "").trim(); // tx hash / MTCN / bank ref / momo ref
+  const reference = String(body.reference || "").trim();
   const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
   const note = body.note ? String(body.note).trim() : null;
 
@@ -755,21 +787,26 @@ if (intent === "submitEscrowPayment") {
       err.statusCode = 404;
       throw err;
     }
-
     if (escrow.buyerId !== decoded.uid) {
       const err = new Error("Forbidden");
       err.statusCode = 403;
       throw err;
     }
 
-    // Only allow submitting proof early (adjust later if needed)
+    // Prevent submitting if listing already sold
+    const purchase = await tx.purchase.findFirst({ where: { listingId: escrow.listingId }, select: { id: true } });
+    if (purchase) {
+      const err = new Error("Listing already sold");
+      err.statusCode = 409;
+      throw err;
+    }
+
     if (!["INITIATED", "FEE_PAID"].includes(escrow.status)) {
       const err = new Error(`Cannot submit payment in status ${escrow.status}`);
       err.statusCode = 400;
       throw err;
     }
 
-    // Idempotency-ish: if this reference already exists, reuse it
     const existingProof = await tx.escrowProof.findFirst({
       where: { escrowId, kind: "PAYMENT_PROOF", note: reference },
       orderBy: { createdAt: "desc" },
@@ -778,15 +815,9 @@ if (intent === "submitEscrowPayment") {
     const proof =
       existingProof ||
       (await tx.escrowProof.create({
-        data: {
-          escrowId,
-          kind: "PAYMENT_PROOF",
-          url: proofUrl,
-          note: reference, // store reference here
-        },
+        data: { escrowId, kind: "PAYMENT_PROOF", url: proofUrl, note: reference },
       }));
 
-    // Move INITIATED -> FEE_PAID (means buyer submitted payment details)
     const updatedEscrow =
       escrow.status === "INITIATED"
         ? await tx.escrowTransaction.update({
@@ -797,6 +828,12 @@ if (intent === "submitEscrowPayment") {
             },
           })
         : escrow;
+
+    // ✅ Reserve the listing so nobody else can buy from marketplace
+    await tx.listing.update({
+      where: { id: escrow.listingId },
+      data: { status: "INACTIVE" },
+    });
 
     return { escrow: updatedEscrow, proof };
   });
