@@ -1,5 +1,5 @@
-import { prisma } from "../_lib/prisma.js";
-import { requireAuth } from "../_lib/auth.js";
+import { prisma } from "../../../api/_lib/prisma.js";
+import { requireAuth } from "../../../api/_lib/auth.js";
 
 function readJson(req) {
   const b = req.body;
