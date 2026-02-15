@@ -23,6 +23,7 @@ import { Toaster } from "./components/ui/toaster";
 
 import usePresencePing from "./hooks/usePresencePing";
 import CheckoutPage from "./pages/CheckoutPage";
+import AdminSettings from "./pages/admin/AdminSettings";
 
 export default function App() {
   usePresencePing();
@@ -71,6 +72,7 @@ export default function App() {
   <Route path="platforms" element={<AdminPlatforms />} />
   <Route path="categories" element={<AdminCategories />} />
   <Route path="feed" element={<AdminFeed />} />
+  <Route path="/admin/settings" element={<AdminSettings />} />
 </Route>
 <Route path="/feed" element={<Feed />} />
 <Route path="/feed/:id" element={<FeedPostDetails />} />

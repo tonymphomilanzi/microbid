@@ -174,6 +174,82 @@ async function advisoryLock(tx, lockKey) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 }
 
+
+// cached singleton config (reduces DB hits)
+const APP_CONFIG_CACHE = { value: null, exp: 0 };
+
+async function getAppConfigCached() {
+  const now = Date.now();
+  if (APP_CONFIG_CACHE.value && now < APP_CONFIG_CACHE.exp) return APP_CONFIG_CACHE.value;
+
+  const cfg =
+    (await prisma.appConfig.findUnique({ where: { id: "global" } }).catch(() => null)) ||
+    (await prisma.appConfig.create({ data: { id: "global", escrowFeeBps: 200 } }).catch(() => null));
+
+  APP_CONFIG_CACHE.value = cfg;
+  APP_CONFIG_CACHE.exp = now + 30_000; // 30s cache
+  return cfg;
+}
+
+function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
+  const totalUsd = (Number(totalChargeCents || 0) / 100).toFixed(2);
+
+  if (method === "BTC") {
+    return {
+      lines: [
+        `Send exactly $${totalUsd} worth of BTC to the address below.`,
+        `Reference code: ${escrowId}. Keep it for proof.`,
+      ],
+      fields: [
+        { label: "BTC Address", value: cfg?.companyBtcAddress || "" },
+        { label: "Network", value: cfg?.companyBtcNetwork || "Bitcoin" },
+      ],
+    };
+  }
+
+  if (method === "MOMO") {
+    return {
+      lines: [
+        `Send exactly $${totalUsd} (or equivalent) to the Mobile Money details below.`,
+        `Use reference code: ${escrowId} as the payment reference.`,
+      ],
+      fields: [
+        { label: "Account Name", value: cfg?.companyMomoName || "" },
+        { label: "MoMo Number", value: cfg?.companyMomoNumber || "" },
+        { label: "Country", value: cfg?.companyMomoCountry || "" },
+      ],
+    };
+  }
+
+  if (method === "WU") {
+    return {
+      lines: [
+        `Send exactly $${totalUsd} via Western Union.`,
+        `Use reference code: ${escrowId} (if possible).`,
+      ],
+      fields: [
+        { label: "Receiver Name", value: cfg?.companyWuName || "" },
+        { label: "Receiver Country", value: cfg?.companyWuCountry || "" },
+        { label: "Receiver City", value: cfg?.companyWuCity || "" },
+      ],
+    };
+  }
+
+  // BANK
+  return {
+    lines: [
+      `Send exactly $${totalUsd} via bank transfer.`,
+      `Put reference code: ${escrowId} in the transfer memo/reference.`,
+    ],
+    fields: [
+      { label: "Bank Name", value: cfg?.companyBankName || "" },
+      { label: "Account Name", value: cfg?.companyBankAccountName || "" },
+      { label: "Account Number", value: cfg?.companyBankAccountNumber || "" },
+      { label: "SWIFT / IBAN", value: cfg?.companyBankSwift || "" },
+      { label: "Country", value: cfg?.companyBankCountry || "" },
+    ],
+  };
+}
 // -----------------------------
 // Deposit instructions builder (company-controlled)
 // Put these in Vercel env vars so you can change without code edits.
@@ -655,6 +731,8 @@ export default async function handler(req, res) {
       //   { escrow: EscrowTransaction, instructions: { lines:[], fields:[] } }
       // -----------------------------------------------------------------------
       if (intent === "startEscrow") {
+
+        
         if (!checkRateLimitOr429(req, res, { scope: "post:startEscrow", limit: 20, windowMs: 60_000 }))
           return;
 
@@ -690,12 +768,15 @@ export default async function handler(req, res) {
         }
 
         // Defaults: 2% fee
-        const feeBps = Number(process.env.ESCROW_FEE_BPS ?? 200);
-        const minFeeCents = Number(process.env.ESCROW_MIN_FEE_CENTS ?? 0);
+  const cfg = await getAppConfigCached();
+
+const feeBps = Number(cfg?.escrowFeeBps ?? 200);
+const minFeeCents = Number(process.env.ESCROW_MIN_FEE_CENTS ?? 0); // optional keep as env
+
 
         // Not a relation in your schema, so any string is acceptable.
         // Set this in Vercel env to your company/admin uid (or a system string).
-        const escrowAgentId = String(process.env.ESCROW_AGENT_UID || "SYSTEM");
+       const escrowAgentId = String(cfg?.escrowAgentUid || "SYSTEM");
 
         const escrow = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `escrow:start:${listingId}:${decoded.uid}:${method}`);
@@ -748,13 +829,13 @@ export default async function handler(req, res) {
           });
         });
 
-        const payload = {
-          escrow,
-          instructions: instructionsForManualMethod(method, escrow.id, escrow.totalChargeCents),
-        };
+      const payload = {
+  escrow,
+  instructions: instructionsFromConfig(cfg, method, escrow.id, escrow.totalChargeCents),
+};
 
-        if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
-        return send(res, 200, payload);
+if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 200, payload, 2 * 60_000);
+return send(res, 200, payload);
       }
 
       // -----------------------------------------------------------------------

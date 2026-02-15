@@ -10,6 +10,7 @@ import {
   Bars3Icon,
   ArrowLeftIcon,NewspaperIcon
 } from "@heroicons/react/24/outline";
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 
 const nav = [
   { to: "/admin", label: "Overview", Icon: Squares2X2Icon },
@@ -18,6 +19,7 @@ const nav = [
   { to: "/admin/platforms", label: "Platforms", Icon: RectangleStackIcon },
   { to: "/admin/categories", label: "Categories", Icon: TagIcon },
   { to: "/admin/feed", label: "Feed", Icon: NewspaperIcon },
+  { to: "/admin/settings", label: "Settings", Icon: Cog6ToothIcon },
 ];
 
 function Sidebar() {
