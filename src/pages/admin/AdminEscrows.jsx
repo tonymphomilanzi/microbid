@@ -1,11 +1,4 @@
 // src/pages/admin/AdminEscrows.jsx
-// -----------------------------------------------------------------------------
-// Mobile-responsive Escrows queue + Drawer with full scrollable content
-// - List escrows (default: FEE_PAID)
-// - Tap row -> opens Drawer
-// - Drawer has its own scroll area + sticky bottom action bar (Verify / Close)
-// -----------------------------------------------------------------------------
-
 import { useEffect, useMemo, useState } from "react";
 import { adminService } from "../../services/admin.service";
 import { Card, CardContent } from "../../components/ui/card";
@@ -13,7 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Separator } from "../../components/ui/separator";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../../components/ui/drawer";
+import { Drawer, DrawerContent } from "../../components/ui/drawer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { Copy, ExternalLink, RefreshCw, ShieldCheck } from "lucide-react";
+import { Copy, ExternalLink, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useToast } from "../../hooks/use-toast";
 
 function fmtUsdFromCents(cents) {
@@ -112,12 +105,13 @@ export default function AdminEscrows() {
   const [status, setStatus] = useState("FEE_PAID");
   const [q, setQ] = useState("");
 
-  // drawer state
+  // drawer
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
+
   const selected = useMemo(() => escrows.find((e) => e.id === selectedId) || null, [escrows, selectedId]);
 
-  // verify confirm
+  // verify
   const [confirmVerifyOpen, setConfirmVerifyOpen] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
@@ -162,7 +156,6 @@ export default function AdminEscrows() {
 
   async function verifySelected() {
     if (!selected?.id) return;
-
     setVerifying(true);
     try {
       await adminService.verifyEscrowPayment(selected.id);
@@ -256,7 +249,7 @@ export default function AdminEscrows() {
                     if (e.key === "Enter") load();
                   }}
                 />
-                <Button onClick={load} disabled={loading} className="sm:w-auto w-full">
+                <Button onClick={load} disabled={loading} className="w-full sm:w-auto">
                   Search
                 </Button>
               </div>
@@ -274,83 +267,76 @@ export default function AdminEscrows() {
             ) : escrows.length === 0 ? (
               <div className="p-6 text-sm text-muted-foreground">No escrows found.</div>
             ) : (
-              escrows.map((e) => {
-                const label = providerLabel(e.provider, e.providerRef);
-
-                return (
-                  <button
-                    key={e.id}
-                    type="button"
-                    className="w-full text-left p-4 hover:bg-muted/20 transition"
-                    onClick={() => {
-                      setSelectedId(e.id);
-                      setOpen(true);
-                    }}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-medium truncate">{e.listing?.title || "—"}</div>
-
-                          <Badge variant="outline" className={statusBadgeClass(e.status)}>
-                            {e.status}
-                          </Badge>
-
+              escrows.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  className="w-full text-left p-4 hover:bg-muted/20 transition"
+                  onClick={() => {
+                    setSelectedId(e.id);
+                    setOpen(true);
+                  }}
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-medium truncate">{e.listing?.title || "—"}</div>
+                        <Badge variant="outline" className={statusBadgeClass(e.status)}>
+                          {e.status}
+                        </Badge>
+                        <Badge variant="outline" className="border-border/60 bg-muted/20">
+                          {providerLabel(e.provider, e.providerRef)}
+                        </Badge>
+                        {typeof e.listing?.price === "number" ? (
                           <Badge variant="outline" className="border-border/60 bg-muted/20">
-                            {label}
+                            Price ${e.listing.price}
                           </Badge>
-
-                          {typeof e.listing?.price === "number" ? (
-                            <Badge variant="outline" className="border-border/60 bg-muted/20">
-                              Price ${e.listing.price}
-                            </Badge>
-                          ) : null}
-                        </div>
-
-                        <div className="text-xs text-muted-foreground">
-                          Escrow: <span className="font-mono break-all">{e.id}</span>
-                        </div>
-
-                        <div className="text-xs text-muted-foreground">
-                          Buyer: <span className="font-mono break-all">{e.buyerId}</span> • Seller:{" "}
-                          <span className="font-mono break-all">{e.sellerId}</span>
-                        </div>
-
-                        <div className="text-xs text-muted-foreground">
-                          Created: {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}
-                        </div>
+                        ) : null}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                        <Badge variant="outline" className="border-border/60 bg-muted/20">
-                          Total {fmtUsdFromCents(e.totalChargeCents)}
-                        </Badge>
+                      <div className="text-xs text-muted-foreground">
+                        Escrow: <span className="font-mono break-all">{e.id}</span>
+                      </div>
 
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={(ev) => {
-                            ev.preventDefault();
-                            ev.stopPropagation();
-                            copy(e.id, "Escrow ID");
-                          }}
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copy ID
-                        </Button>
+                      <div className="text-xs text-muted-foreground">
+                        Buyer: <span className="font-mono break-all">{e.buyerId}</span> • Seller:{" "}
+                        <span className="font-mono break-all">{e.sellerId}</span>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground">
+                        Created: {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}
                       </div>
                     </div>
-                  </button>
-                );
-              })
+
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <Badge variant="outline" className="border-border/60 bg-muted/20">
+                        Total {fmtUsdFromCents(e.totalChargeCents)}
+                      </Badge>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          copy(e.id, "Escrow ID");
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy ID
+                      </Button>
+                    </div>
+                  </div>
+                </button>
+              ))
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Drawer (scrollable + sticky footer actions) */}
+      {/* Drawer */}
       <Drawer
         open={open}
         onOpenChange={(o) => {
@@ -358,25 +344,56 @@ export default function AdminEscrows() {
           if (!o) setSelectedId("");
         }}
       >
-        {/* fixed height on mobile, smaller on desktop; prevent clipping */}
-        <DrawerContent className="h-[92vh] sm:h-[85vh] overflow-hidden">
-          {/* this wrapper scrolls */}
-          <div className="mx-auto h-full w-full max-w-3xl overflow-y-auto px-4 pb-28">
-            <DrawerHeader className="px-0">
-              <DrawerTitle>Escrow details</DrawerTitle>
-              <div className="text-xs text-muted-foreground">
-                Review proofs and verify the payment if correct.
-              </div>
-            </DrawerHeader>
+        <DrawerContent
+          className={[
+            // force overlay (prevents pushing navbar/layout even if your Drawer impl isn't portaled)
+            "fixed inset-x-0 bottom-0 z-50",
+            // sizing
+            "h-[92vh] sm:h-[85vh]",
+            // styling
+            "overflow-hidden rounded-t-2xl border border-border/60 bg-background/95 backdrop-blur",
+          ].join(" ")}
+        >
+          <div className="mx-auto h-full w-full max-w-3xl flex flex-col">
+            {/* Header (not scroll) */}
+            <div className="px-4 pt-4 pb-3 border-b border-border/60">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">Escrow details</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Review proofs and verify the payment if correct.
+                  </div>
+                </div>
 
-            {!selected ? (
-              <div className="p-6 text-sm text-muted-foreground">Loading details…</div>
-            ) : (
-              <div className="space-y-4">
-                {/* Summary */}
-                <Card className="border-border/60 bg-card/60">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="outline" size="icon" onClick={() => setOpen(false)} aria-label="Close">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {selected ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className={statusBadgeClass(selected.status)}>
+                    {selected.status}
+                  </Badge>
+                  <Badge variant="outline" className="border-border/60 bg-muted/20">
+                    {providerLabel(selected.provider, selected.providerRef)}
+                  </Badge>
+                  <Badge variant="outline" className="border-border/60 bg-muted/20">
+                    {fmtUsdFromCents(selected.totalChargeCents)}
+                  </Badge>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Scroll area */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+              {!selected ? (
+                <div className="p-6 text-sm text-muted-foreground">Loading details…</div>
+              ) : (
+                <>
+                  {/* Summary */}
+                  <Card className="border-border/60 bg-card/60">
+                    <CardContent className="p-4 space-y-3">
                       <div className="min-w-0">
                         <div className="font-medium truncate">{selected.listing?.title || "—"}</div>
                         <div className="mt-1 text-xs text-muted-foreground">
@@ -384,128 +401,129 @@ export default function AdminEscrows() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className={statusBadgeClass(selected.status)}>
-                          {selected.status}
-                        </Badge>
-                        <Badge variant="outline" className="border-border/60 bg-muted/20">
-                          {providerLabel(selected.provider, selected.providerRef)}
-                        </Badge>
-                      </div>
-                    </div>
+                      <Separator className="bg-border/60" />
 
-                    <Separator className="bg-border/60" />
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="text-xs text-muted-foreground">Price</div>
-                        <div className="text-sm font-semibold">{fmtUsdFromCents(selected.priceCents)}</div>
-                      </div>
-                      <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="text-xs text-muted-foreground">Fee</div>
-                        <div className="text-sm font-semibold">
-                          {fmtUsdFromCents(selected.feeCents)}{" "}
-                          <span className="text-xs text-muted-foreground">({selected.feeBps} bps)</span>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">Price</div>
+                          <div className="text-sm font-semibold">{fmtUsdFromCents(selected.priceCents)}</div>
                         </div>
-                      </div>
-                      <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="text-xs text-muted-foreground">Total</div>
-                        <div className="text-sm font-semibold">{fmtUsdFromCents(selected.totalChargeCents)}</div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="text-xs text-muted-foreground">Buyer</div>
-                        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="font-mono text-xs break-all">{selected.buyerId}</div>
-                          <Button variant="outline" size="sm" className="gap-2" onClick={() => copy(selected.buyerId, "Buyer ID")}>
-                            <Copy className="h-4 w-4" />
-                            Copy
-                          </Button>
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">Fee</div>
+                          <div className="text-sm font-semibold">
+                            {fmtUsdFromCents(selected.feeCents)}{" "}
+                            <span className="text-xs text-muted-foreground">({selected.feeBps} bps)</span>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">Total</div>
+                          <div className="text-sm font-semibold">{fmtUsdFromCents(selected.totalChargeCents)}</div>
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                        <div className="text-xs text-muted-foreground">Seller</div>
-                        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="font-mono text-xs break-all">{selected.sellerId}</div>
-                          <Button variant="outline" size="sm" className="gap-2" onClick={() => copy(selected.sellerId, "Seller ID")}>
-                            <Copy className="h-4 w-4" />
-                            Copy
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <div className="text-xs text-muted-foreground">Listing</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="border-border/60 bg-muted/20">
-                          {selected.listing?.platform || "—"}
-                        </Badge>
-                        <Badge variant="outline" className="border-border/60 bg-muted/20">
-                          Listing status: {selected.listing?.status || "—"}
-                        </Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => copy(selected.listing?.id, "Listing ID")}
-                          disabled={!selected.listing?.id}
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copy listing ID
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Proofs */}
-                <Card className="border-border/60 bg-card/60">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">Proofs</div>
-                      <Badge variant="outline" className="border-border/60 bg-muted/20">
-                        {(selected.proofs?.length ?? 0)} total
-                      </Badge>
-                    </div>
-
-                    {selected.proofs?.length ? (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {selected.proofs.map((p) => (
-                          <ProofCard key={p.id} proof={p} onCopy={copy} />
-                        ))}
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">Buyer</div>
+                          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="font-mono text-xs break-all">{selected.buyerId}</div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => copy(selected.buyerId, "Buyer ID")}
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">Seller</div>
+                          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="font-mono text-xs break-all">{selected.sellerId}</div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => copy(selected.sellerId, "Seller ID")}
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No proofs uploaded/submitted yet.</div>
-                    )}
-                  </CardContent>
-                </Card>
 
-                {/* Verification info */}
-                <Card className="border-border/60 bg-card/60">
-                  <CardContent className="p-4 space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      <ShieldCheck className="h-4 w-4 text-primary" />
-                      Verification
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Verify only after confirming the payment matches incoming funds. This will set listing to SOLD and
-                      create a Purchase record (if missing).
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+                      <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                        <div className="text-xs text-muted-foreground">Listing</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="border-border/60 bg-muted/20">
+                            {selected.listing?.platform || "—"}
+                          </Badge>
+                          <Badge variant="outline" className="border-border/60 bg-muted/20">
+                            Listing status: {selected.listing?.status || "—"}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => copy(selected.listing?.id, "Listing ID")}
+                            disabled={!selected.listing?.id}
+                          >
+                            <Copy className="h-4 w-4" />
+                            Copy listing ID
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-            {/* Sticky bottom actions (always visible on mobile) */}
-            <div className="sticky bottom-0 left-0 right-0 -mx-4 mt-6 border-t border-border/60 bg-background/80 backdrop-blur px-4 py-3">
+                  {/* Proofs */}
+                  <Card className="border-border/60 bg-card/60">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium">Proofs</div>
+                        <Badge variant="outline" className="border-border/60 bg-muted/20">
+                          {(selected.proofs?.length ?? 0)} total
+                        </Badge>
+                      </div>
+
+                      {selected.proofs?.length ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {selected.proofs.map((p) => (
+                            <ProofCard key={p.id} proof={p} onCopy={copy} />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">No proofs uploaded/submitted yet.</div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Verification info */}
+                  <Card className="border-border/60 bg-card/60">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <ShieldCheck className="h-4 w-4 text-primary" />
+                        Verification
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Verify only after confirming the payment matches incoming funds. This will set listing to SOLD and
+                        create a Purchase record (if missing).
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
+
+            {/* Footer actions (always bottom) */}
+            <div className="border-t border-border/60 bg-background/95 px-4 py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button
                   className="w-full sm:w-auto"
-                  disabled={!canVerify || verifying || !selected}
+                  disabled={!selected || !canVerify || verifying}
                   onClick={() => setConfirmVerifyOpen(true)}
                 >
                   {verifying ? "Verifying..." : "Mark payment verified"}
@@ -525,7 +543,7 @@ export default function AdminEscrows() {
         </DrawerContent>
       </Drawer>
 
-      {/* Verify confirm dialog */}
+      {/* Verify confirm */}
       <AlertDialog open={confirmVerifyOpen} onOpenChange={setConfirmVerifyOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
