@@ -1,11 +1,9 @@
 // src/pages/admin/AdminEscrows.jsx
 // -----------------------------------------------------------------------------
-// Admin Escrows queue
-// - Lists escrow transactions (default filter: FEE_PAID)
-// - Click an item to open a Drawer with full details + proofs
-// - Verify payment -> calls adminService.verifyEscrowPayment(escrowId)
-//   (Backend should: set escrow FULLY_PAID + fundedAt, create Purchase if missing,
-//    set listing SOLD, etc.)
+// Mobile-responsive Escrows queue + Drawer with full scrollable content
+// - List escrows (default: FEE_PAID)
+// - Tap row -> opens Drawer
+// - Drawer has its own scroll area + sticky bottom action bar (Verify / Close)
 // -----------------------------------------------------------------------------
 
 import { useEffect, useMemo, useState } from "react";
@@ -69,7 +67,7 @@ function ProofCard({ proof, onCopy }) {
       {proof.note ? (
         <div>
           <div className="text-xs text-muted-foreground">Reference / Note</div>
-          <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="font-mono text-sm font-semibold break-all">{proof.note}</div>
             <Button variant="outline" size="sm" className="gap-2" onClick={() => onCopy(proof.note, "Reference")}>
               <Copy className="h-4 w-4" />
@@ -82,26 +80,20 @@ function ProofCard({ proof, onCopy }) {
       {hasUrl ? (
         <div>
           <div className="text-xs text-muted-foreground">Proof URL</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              title="Open proof"
-            >
-              <a href={proof.url} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Open
-              </a>
-            </Button>
-
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => onCopy(proof.url, "Proof URL")}>
-              <Copy className="h-4 w-4" />
-              Copy
-            </Button>
-
+          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-muted-foreground break-all">{proof.url}</div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm" className="gap-2">
+                <a href={proof.url} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Open
+                </a>
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => onCopy(proof.url, "Proof URL")}>
+                <Copy className="h-4 w-4" />
+                Copy
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -117,7 +109,7 @@ export default function AdminEscrows() {
   const [error, setError] = useState("");
 
   // filters
-  const [status, setStatus] = useState("FEE_PAID"); // default queue: awaiting verification
+  const [status, setStatus] = useState("FEE_PAID");
   const [q, setQ] = useState("");
 
   // drawer state
@@ -166,12 +158,15 @@ export default function AdminEscrows() {
     return { total, feePaid, fullyPaid };
   }, [escrows]);
 
+  const canVerify = Boolean(selected && ["FEE_PAID", "FULLY_PAID"].includes(selected.status));
+
   async function verifySelected() {
     if (!selected?.id) return;
 
     setVerifying(true);
     try {
       await adminService.verifyEscrowPayment(selected.id);
+
       toast({ title: "Verified", description: "Escrow marked as verified and listing set to SOLD." });
 
       setConfirmVerifyOpen(false);
@@ -189,14 +184,13 @@ export default function AdminEscrows() {
     }
   }
 
-  const canVerify = selected && ["FEE_PAID", "FULLY_PAID"].includes(selected.status);
-
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Escrows</h1>
         <p className="text-sm text-muted-foreground">
-          Review payment proofs and verify manual payments. Default view shows <span className="font-medium">FEE_PAID</span>.
+          Review payment proofs and verify manual payments. Default view shows{" "}
+          <span className="font-medium">FEE_PAID</span>.
         </p>
       </div>
 
@@ -253,7 +247,7 @@ export default function AdminEscrows() {
 
             <div className="sm:col-span-3">
               <div className="text-xs text-muted-foreground mb-1">Search</div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   placeholder="Search by escrow id, listing title, buyerId, sellerId..."
                   value={q}
@@ -262,7 +256,7 @@ export default function AdminEscrows() {
                     if (e.key === "Enter") load();
                   }}
                 />
-                <Button onClick={load} disabled={loading}>
+                <Button onClick={load} disabled={loading} className="sm:w-auto w-full">
                   Search
                 </Button>
               </div>
@@ -282,8 +276,6 @@ export default function AdminEscrows() {
             ) : (
               escrows.map((e) => {
                 const label = providerLabel(e.provider, e.providerRef);
-                const listingTitle = e.listing?.title || "—";
-                const listingPrice = e.listing?.price ?? null;
 
                 return (
                   <button
@@ -298,7 +290,7 @@ export default function AdminEscrows() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-medium truncate">{listingTitle}</div>
+                          <div className="font-medium truncate">{e.listing?.title || "—"}</div>
 
                           <Badge variant="outline" className={statusBadgeClass(e.status)}>
                             {e.status}
@@ -308,20 +300,20 @@ export default function AdminEscrows() {
                             {label}
                           </Badge>
 
-                          {typeof listingPrice === "number" ? (
+                          {typeof e.listing?.price === "number" ? (
                             <Badge variant="outline" className="border-border/60 bg-muted/20">
-                              Price ${listingPrice}
+                              Price ${e.listing.price}
                             </Badge>
                           ) : null}
                         </div>
 
                         <div className="text-xs text-muted-foreground">
-                          Escrow: <span className="font-mono">{e.id}</span>
+                          Escrow: <span className="font-mono break-all">{e.id}</span>
                         </div>
 
                         <div className="text-xs text-muted-foreground">
-                          Buyer: <span className="font-mono">{e.buyerId}</span> • Seller:{" "}
-                          <span className="font-mono">{e.sellerId}</span>
+                          Buyer: <span className="font-mono break-all">{e.buyerId}</span> • Seller:{" "}
+                          <span className="font-mono break-all">{e.sellerId}</span>
                         </div>
 
                         <div className="text-xs text-muted-foreground">
@@ -358,7 +350,7 @@ export default function AdminEscrows() {
         </CardContent>
       </Card>
 
-      {/* Drawer */}
+      {/* Drawer (scrollable + sticky footer actions) */}
       <Drawer
         open={open}
         onOpenChange={(o) => {
@@ -366,8 +358,10 @@ export default function AdminEscrows() {
           if (!o) setSelectedId("");
         }}
       >
-        <DrawerContent className="max-h-[85vh]">
-          <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+        {/* fixed height on mobile, smaller on desktop; prevent clipping */}
+        <DrawerContent className="h-[92vh] sm:h-[85vh] overflow-hidden">
+          {/* this wrapper scrolls */}
+          <div className="mx-auto h-full w-full max-w-3xl overflow-y-auto px-4 pb-28">
             <DrawerHeader className="px-0">
               <DrawerTitle>Escrow details</DrawerTitle>
               <div className="text-xs text-muted-foreground">
@@ -379,14 +373,14 @@ export default function AdminEscrows() {
               <div className="p-6 text-sm text-muted-foreground">Loading details…</div>
             ) : (
               <div className="space-y-4">
-                {/* Top summary */}
+                {/* Summary */}
                 <Card className="border-border/60 bg-card/60">
                   <CardContent className="p-4 space-y-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <div className="font-medium truncate">{selected.listing?.title || "—"}</div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Escrow ID: <span className="font-mono">{selected.id}</span>
+                          Escrow ID: <span className="font-mono break-all">{selected.id}</span>
                         </div>
                       </div>
 
@@ -420,10 +414,10 @@ export default function AdminEscrows() {
                       </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
                         <div className="text-xs text-muted-foreground">Buyer</div>
-                        <div className="mt-1 flex items-center justify-between gap-2">
+                        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div className="font-mono text-xs break-all">{selected.buyerId}</div>
                           <Button variant="outline" size="sm" className="gap-2" onClick={() => copy(selected.buyerId, "Buyer ID")}>
                             <Copy className="h-4 w-4" />
@@ -434,7 +428,7 @@ export default function AdminEscrows() {
 
                       <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
                         <div className="text-xs text-muted-foreground">Seller</div>
-                        <div className="mt-1 flex items-center justify-between gap-2">
+                        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div className="font-mono text-xs break-all">{selected.sellerId}</div>
                           <Button variant="outline" size="sm" className="gap-2" onClick={() => copy(selected.sellerId, "Seller ID")}>
                             <Copy className="h-4 w-4" />
@@ -479,7 +473,7 @@ export default function AdminEscrows() {
                     </div>
 
                     {selected.proofs?.length ? (
-                      <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         {selected.proofs.map((p) => (
                           <ProofCard key={p.id} proof={p} onCopy={copy} />
                         ))}
@@ -490,35 +484,43 @@ export default function AdminEscrows() {
                   </CardContent>
                 </Card>
 
-                {/* Actions */}
+                {/* Verification info */}
                 <Card className="border-border/60 bg-card/60">
-                  <CardContent className="p-4 space-y-3">
+                  <CardContent className="p-4 space-y-2">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <ShieldCheck className="h-4 w-4 text-primary" />
                       Verification
                     </div>
-
                     <div className="text-sm text-muted-foreground">
-                      Verify only after confirming the payment reference/receipt matches your incoming funds.
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button
-                        className="w-full"
-                        disabled={!canVerify || verifying}
-                        onClick={() => setConfirmVerifyOpen(true)}
-                      >
-                        {verifying ? "Verifying..." : "Mark payment verified"}
-                      </Button>
-
-                      <Button variant="outline" className="w-full" onClick={() => setOpen(false)} disabled={verifying}>
-                        Close
-                      </Button>
+                      Verify only after confirming the payment matches incoming funds. This will set listing to SOLD and
+                      create a Purchase record (if missing).
                     </div>
                   </CardContent>
                 </Card>
               </div>
             )}
+
+            {/* Sticky bottom actions (always visible on mobile) */}
+            <div className="sticky bottom-0 left-0 right-0 -mx-4 mt-6 border-t border-border/60 bg-background/80 backdrop-blur px-4 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={!canVerify || verifying || !selected}
+                  onClick={() => setConfirmVerifyOpen(true)}
+                >
+                  {verifying ? "Verifying..." : "Mark payment verified"}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setOpen(false)}
+                  disabled={verifying}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
           </div>
         </DrawerContent>
       </Drawer>
@@ -538,7 +540,7 @@ export default function AdminEscrows() {
                 • Set listing status to <span className="font-semibold">SOLD</span>
               </div>
               <div className="mt-3 text-xs text-muted-foreground">
-                Escrow: <span className="font-mono">{selected?.id}</span>
+                Escrow: <span className="font-mono break-all">{selected?.id}</span>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
