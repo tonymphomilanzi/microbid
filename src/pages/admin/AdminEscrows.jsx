@@ -509,8 +509,7 @@ export default function AdminEscrows() {
                         Verification
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Verify only after confirming the payment matches incoming funds. This will set listing to SOLD and
-                        create a Purchase record (if missing).
+                        Verify only after confirming the payment matches incoming funds. This will mark the escrow as fully paid and set the listing to SOLD.
                       </div>
                     </CardContent>
                   </Card>

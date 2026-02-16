@@ -829,7 +829,7 @@ if (intent === "submitEscrowPayment") {
           })
         : escrow;
 
-    // ✅ Reserve the listing so nobody else can buy from marketplace
+    // Reserve the listing so nobody else can buy from marketplace
     await tx.listing.update({
       where: { id: escrow.listingId },
       data: { status: "INACTIVE" },

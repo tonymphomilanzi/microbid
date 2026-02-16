@@ -24,7 +24,7 @@ import { Toaster } from "./components/ui/toaster";
 import usePresencePing from "./hooks/usePresencePing";
 import CheckoutPage from "./pages/CheckoutPage";
 import AdminSettings from "./pages/admin/AdminSettings";
-import AdminEscrows from "./pages/admin/AdminEscrows"; // ✅ NEW
+import AdminEscrows from "./pages/admin/AdminEscrows"; // NEW
 
 export default function App() {
   usePresencePing();

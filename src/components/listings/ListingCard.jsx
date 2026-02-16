@@ -14,11 +14,6 @@ const platformClasses = (p) => {
   return "bg-blue-500/10 text-blue-300 border-blue-500/20";
 };
 
-function initialsFromUsername(username) {
-  if (!username) return "U";
-  return username.slice(0, 2).toUpperCase();
-}
-
 function SellerHandle({ username }) {
   if (username) return <span className="truncate text-sm text-muted-foreground">@{username}</span>;
   return (
@@ -27,18 +22,44 @@ function SellerHandle({ username }) {
     </span>
   );
 }
-  const ONLINE_WINDOW_MS = 2 * 60 * 1000;
-const isOnline = (ts) =>
-  ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false;
+
+const ONLINE_WINDOW_MS = 2 * 60 * 1000;
+const isOnline = (ts) => (ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false);
+
+function VerifiedCheckWithOnline({ online }) {
+  // Online dot is "inside" the check icon
+  return (
+    <span
+      className="relative inline-flex h-4 w-4"
+      title={online ? "Verified • Online" : "Verified • Offline"}
+    >
+      <BadgeCheck className="h-4 w-4 text-primary" />
+      {/* dot centered inside the icon */}
+      <span className="absolute inset-0 grid place-items-center">
+        <span
+          className={[
+            "h-1.5 w-1.5 rounded-full",
+            "ring-2 ring-background", // makes it readable on any bg
+            online ? "bg-emerald-400" : "bg-muted-foreground/40",
+          ].join(" ")}
+        />
+      </span>
+    </span>
+  );
+}
 
 export default function ListingCard({ listing }) {
-
-
   const navigate = useNavigate();
 
   const verified = Boolean(listing?.seller?.isVerified);
   const username = listing?.seller?.username || "";
   const categoryName = listing?.category?.name;
+
+  const online = isOnline(listing?.seller?.lastActiveAt);
+
+  // If verified, we show online status in the check icon (not on avatar).
+  // If not verified, keep avatar online dot.
+  const avatarOnline = !verified && online;
 
   const shareUrl = useMemo(
     () => `${window.location.origin}/listings/${listing.id}`,
@@ -76,14 +97,13 @@ export default function ListingCard({ listing }) {
           </Badge>
         </div>
 
-        {/* price */}
+        {/* price + share */}
         <div className="absolute right-3 top-3 flex items-center gap-2">
           <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-sm font-semibold backdrop-blur">
             <DollarSign className="h-4 w-4 text-primary" />
             <span>{listing.price}</span>
           </div>
 
-          {/* share (stop card navigation) */}
           <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             <ShareSheet
               url={shareUrl}
@@ -109,29 +129,17 @@ export default function ListingCard({ listing }) {
         {/* Seller row */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <div
-              className={[
-                "grid h-9 w-9 shrink-0 place-items-center rounded-full border text-xs font-semibold",
-                verified
-                  ? "border-primary/25 bg-primary/10 text-primary"
-                  : "border-border/60 bg-muted/20 text-muted-foreground",
-              ].join(" ")}
-            >
             <UserAvatar
-  src={listing?.seller?.avatarUrl}
-  alt={username ? `@${username}` : "Seller"}
-  size={36}
-  online={isOnline(listing.seller?.lastActiveAt)}
-/>
-            </div>
+              src={listing?.seller?.avatarUrl}
+              alt={username ? `@${username}` : "Seller"}
+              size={36}
+              online={avatarOnline}
+            />
 
             <div className="min-w-0 flex items-center gap-1">
               <SellerHandle username={username} />
-              {verified ? (
-                <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
-                  <BadgeCheck className="h-4 w-4" />
-                </span>
-              ) : null}
+
+              {verified ? <VerifiedCheckWithOnline online={online} /> : null}
             </div>
           </div>
 
