@@ -66,6 +66,49 @@ function moneyOrDash(v) {
   return `$${n}`;
 }
 
+function requestAcceptHighest() {
+  if (!isOwner) return;
+  setAcceptBidOpen(true);
+}
+
+async function acceptHighestConfirmed() {
+  if (!isOwner) return;
+
+  setAccepting(true);
+  try {
+    const res = await listingsService.acceptHighestBid(id);
+
+    // update local listing state so UI disables bidding immediately
+    setListing((prev) =>
+      prev
+        ? {
+            ...prev,
+            biddingClosed: true,
+            status: "INACTIVE",
+            acceptedBidId: res.listing?.acceptedBidId,
+            acceptedBidderId: res.listing?.acceptedBidderId,
+            acceptedBidAmount: res.listing?.acceptedBidAmount,
+          }
+        : prev
+    );
+
+    toast({
+      title: "Bid accepted",
+      description: `Accepted highest bid $${res.acceptedBid?.amount || ""}`,
+    });
+
+    setBidsOpen(false);
+  } catch (e) {
+    toast({
+      title: "Could not accept bid",
+      description: e?.response?.data?.message || e.message || "Try again.",
+    });
+  } finally {
+    setAccepting(false);
+    setAcceptBidOpen(false);
+  }
+}
+
 export default function ListingDetails() {
 
   const navigate = useNavigate();
@@ -112,6 +155,9 @@ const [buyOpen, setBuyOpen] = useState(false);
   // Confirm bid dialog
   const [confirmBidOpen, setConfirmBidOpen] = useState(false);
   const [pendingBidAmount, setPendingBidAmount] = useState(0);
+
+  const [acceptBidOpen, setAcceptBidOpen] = useState(false);
+  const [accepting, setAccepting] = useState(false);
 
   const actionBtn =
     "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
@@ -305,6 +351,10 @@ const [buyOpen, setBuyOpen] = useState(false);
   }
 
   function requestBidConfirm() {
+    if (listing?.biddingClosed) {
+  toast({ title: "Bidding closed", description: "The seller has closed bidding for this listing." });
+  return;
+}
     if (!user) return needLoginToast();
     if (isOwner) {
       toast({ title: "Not allowed", description: "You cannot bid on your own listing." });
@@ -750,11 +800,29 @@ function onChoosePayment(method) {
           <DrawerContent className="max-h-[85vh]">
             <div className="mx-auto w-full max-w-2xl px-4 pb-4">
               <DrawerHeader className="px-0">
-                <DrawerTitle>Bids</DrawerTitle>
-                <div className="text-xs text-muted-foreground">
-                  {bidCount} bids • Highest ${highestBid || 0}
-                </div>
-              </DrawerHeader>
+  <div className="flex items-start justify-between gap-3">
+    <div>
+      <DrawerTitle>Bids</DrawerTitle>
+      <div className="text-xs text-muted-foreground">
+        {bidCount} bids • Highest ${highestBid || 0}
+        {listing?.biddingClosed ? " • Bidding closed" : ""}
+      </div>
+    </div>
+
+    {/* Only owner sees accept button */}
+    {isOwner && !listing?.biddingClosed ? (
+      <Button
+        size="sm"
+        className="bg-yellow-400 text-black hover:bg-yellow-500"
+        onClick={requestAcceptHighest}
+        disabled={accepting || bidCount === 0}
+        title={bidCount === 0 ? "No bids to accept" : "Accept highest bid"}
+      >
+        {accepting ? "Accepting..." : "Accept highest"}
+      </Button>
+    ) : null}
+  </div>
+</DrawerHeader>
 
               <div className="flex h-[70vh] flex-col">
                 <div className="flex-1 overflow-auto pr-1 space-y-3">
@@ -823,7 +891,7 @@ function onChoosePayment(method) {
                       inputMode="numeric"
                       value={bidAmount}
                       onChange={(e) => setBidAmount(e.target.value)}
-                      disabled={!user || bidSending}
+                      disabled={!user || bidSending || listing?.biddingClosed}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
@@ -896,6 +964,25 @@ function onChoosePayment(method) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+     
+        <AlertDialog open={acceptBidOpen} onOpenChange={setAcceptBidOpen}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Accept highest bid?</AlertDialogTitle>
+      <AlertDialogDescription>
+        This will close bidding and reserve the listing for the highest bidder.
+        Other buyers will not be able to pay for this listing.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel disabled={accepting}>Cancel</AlertDialogCancel>
+      <AlertDialogAction disabled={accepting} onClick={acceptHighestConfirmed}>
+        {accepting ? "Accepting..." : "Yes, accept"}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
 
 
         <PaymentMethodModal

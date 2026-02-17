@@ -500,6 +500,104 @@ export default async function handler(req, res) {
 
 
 
+      // -----------------------------------------------------------------------
+// Intent: acceptHighestBid (seller only)
+// Chooses highest bid and reserves listing for that bidder.
+// -----------------------------------------------------------------------
+if (intent === "acceptHighestBid") {
+  if (!checkRateLimitOr429(req, res, { scope: "post:acceptHighestBid", limit: 30, windowMs: 60_000 }))
+    return;
+
+  const listingId = String(body.listingId || "");
+  if (!listingId) return send(res, 400, { message: "Missing listingId" });
+
+  const result = await prisma.$transaction(async (tx) => {
+    await advisoryLock(tx, `bid:acceptHighest:${listingId}`);
+
+    const listing = await tx.listing.findUnique({
+      where: { id: listingId },
+      select: {
+        id: true,
+        sellerId: true,
+        status: true,
+        biddingClosed: true,
+        acceptedBidId: true,
+      },
+    });
+
+    if (!listing) {
+      const err = new Error("Listing not found");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (listing.sellerId !== decoded.uid) {
+      const err = new Error("Forbidden");
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // already accepted/closed => idempotent
+    if (listing.biddingClosed && listing.acceptedBidId) {
+      const acceptedBid = await tx.listingBid.findUnique({
+        where: { id: listing.acceptedBidId },
+        include: { bidder: { select: { id: true, username: true, avatarUrl: true } } },
+      });
+      return { listing, acceptedBid };
+    }
+
+    // if already sold, stop
+    const purchase = await tx.purchase.findFirst({
+      where: { listingId },
+      select: { id: true },
+    });
+    if (purchase) {
+      const err = new Error("Listing already sold");
+      err.statusCode = 409;
+      throw err;
+    }
+
+    const top = await tx.listingBid.findFirst({
+      where: { listingId },
+      orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
+      include: {
+        bidder: { select: { id: true, username: true, avatarUrl: true } },
+      },
+    });
+
+    if (!top) {
+      const err = new Error("No bids to accept");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updatedListing = await tx.listing.update({
+      where: { id: listingId },
+      data: {
+        biddingClosed: true,
+        status: "INACTIVE", // reserve (hides from marketplace)
+        acceptedBidId: top.id,
+        acceptedBidderId: top.bidderId,
+        acceptedBidAmount: top.amount,
+      },
+      select: {
+        id: true,
+        status: true,
+        biddingClosed: true,
+        acceptedBidId: true,
+        acceptedBidderId: true,
+        acceptedBidAmount: true,
+      },
+    });
+
+    return { listing: updatedListing, acceptedBid: top };
+  });
+
+  return send(res, 200, result);
+}
+
+
+
 
       // -------- addListingBid --------
       if (intent === "addListingBid") {
@@ -514,10 +612,15 @@ export default async function handler(req, res) {
 
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
-          select: { id: true, sellerId: true, status: true, price: true },
+          select: { id: true, sellerId: true, status: true, price: true, biddingClosed: true, acceptedBidId: true },
         });
 
         if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
+
+        ////////////////////////////////////////////////////////////////
+        if (listing.biddingClosed || listing.acceptedBidId) {
+        return send(res, 400, { message: "Bidding is closed for this listing." });
+}
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot bid on your own listing." });
 
         const result = await prisma.$transaction(async (tx) => {
@@ -681,11 +784,26 @@ export default async function handler(req, res) {
 
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
-          select: { id: true, price: true, status: true, sellerId: true },
+          select: { id: true, price: true, status: true, sellerId: true, acceptedBidderId: true, acceptedBidAmount: true, acceptedBidId: true },
         });
 
-        if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
+        
+        const allowedStatus = listing.acceptedBidId ? ["ACTIVE", "INACTIVE"] : ["ACTIVE"];
+        if (!allowedStatus.includes(listing.status)) {
+        return send(res, 404, { message: "Listing not available" });
+}
+
+
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
+        // If a bid has been accepted, ONLY that bidder can pay, and price becomes accepted bid amount.
+if (listing.acceptedBidId) {
+  if (listing.acceptedBidderId !== decoded.uid) {
+    return send(res, 409, { message: "This listing is reserved for another buyer (bid accepted)." });
+  }
+  if (!listing.acceptedBidAmount) {
+    return send(res, 500, { message: "Accepted bid amount missing." });
+  }
+}
 
         const lock = await listingAlreadySoldOrLocked(listingId);
 if (lock.blocked && lock.buyerId !== decoded.uid) {
@@ -727,7 +845,8 @@ if (lock.blocked && lock.reason === "SOLD") {
 
           if (existing) return existing;
 
-          const priceCents = Math.trunc(Number(listing.price) * 100);
+          const effectivePrice = listing.acceptedBidId ? listing.acceptedBidAmount : listing.price;
+          const priceCents = Math.trunc(Number(effectivePrice) * 100);
           const calcFee = Math.round((priceCents * feeBps) / 10_000);
           const feeCents = Math.max(calcFee, minFeeCents);
           const totalChargeCents = priceCents + feeCents;

@@ -190,7 +190,9 @@ export const listingsService = {
   api.post("/listings", { intent: "startEscrow", listingId, method }).then((r) => r.data),
 
   submitEscrowPayment: ({ escrowId, reference, proofUrl, note }) =>
-  api
-    .post("/listings", { intent: "submitEscrowPayment", escrowId, reference, proofUrl, note })
-    .then((r) => r.data),
+  api.post("/listings", { intent: "submitEscrowPayment", escrowId, reference, proofUrl, note }).then((r) => r.data),
+
+
+    acceptHighestBid: (listingId) =>
+  api.post("/listings", { intent: "acceptHighestBid", listingId }).then((r) => r.data),
 };

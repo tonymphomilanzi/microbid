@@ -129,6 +129,12 @@ model Listing {
   income  Int? // e.g. 500 = $500/month (nullable if unknown)
   expense Int? // e.g. 120 = $120/month
 
+
+  biddingClosed     Boolean @default(false)
+  acceptedBidId     String?
+  acceptedBidderId  String?
+  acceptedBidAmount Int?
+
 }
 
 model Purchase {
