@@ -66,48 +66,7 @@ function moneyOrDash(v) {
   return `$${n}`;
 }
 
-function requestAcceptHighest() {
-  if (!isOwner) return;
-  setAcceptBidOpen(true);
-}
 
-async function acceptHighestConfirmed() {
-  if (!isOwner) return;
-
-  setAccepting(true);
-  try {
-    const res = await listingsService.acceptHighestBid(id);
-
-    // update local listing state so UI disables bidding immediately
-    setListing((prev) =>
-      prev
-        ? {
-            ...prev,
-            biddingClosed: true,
-            status: "INACTIVE",
-            acceptedBidId: res.listing?.acceptedBidId,
-            acceptedBidderId: res.listing?.acceptedBidderId,
-            acceptedBidAmount: res.listing?.acceptedBidAmount,
-          }
-        : prev
-    );
-
-    toast({
-      title: "Bid accepted",
-      description: `Accepted highest bid $${res.acceptedBid?.amount || ""}`,
-    });
-
-    setBidsOpen(false);
-  } catch (e) {
-    toast({
-      title: "Could not accept bid",
-      description: e?.response?.data?.message || e.message || "Try again.",
-    });
-  } finally {
-    setAccepting(false);
-    setAcceptBidOpen(false);
-  }
-}
 
 export default function ListingDetails() {
 
@@ -158,6 +117,55 @@ const [buyOpen, setBuyOpen] = useState(false);
 
   const [acceptBidOpen, setAcceptBidOpen] = useState(false);
   const [accepting, setAccepting] = useState(false);
+
+
+
+
+
+
+
+  function requestAcceptHighest() {
+  if (!isOwner) return;
+  setAcceptBidOpen(true);
+}
+
+async function acceptHighestConfirmed() {
+  if (!isOwner) return;
+
+  setAccepting(true);
+  try {
+    const res = await listingsService.acceptHighestBid(id);
+
+    // update local listing state so UI disables bidding immediately
+    setListing((prev) =>
+      prev
+        ? {
+            ...prev,
+            biddingClosed: true,
+            status: "INACTIVE",
+            acceptedBidId: res.listing?.acceptedBidId,
+            acceptedBidderId: res.listing?.acceptedBidderId,
+            acceptedBidAmount: res.listing?.acceptedBidAmount,
+          }
+        : prev
+    );
+
+    toast({
+      title: "Bid accepted",
+      description: `Accepted highest bid $${res.acceptedBid?.amount || ""}`,
+    });
+
+    setBidsOpen(false);
+  } catch (e) {
+    toast({
+      title: "Could not accept bid",
+      description: e?.response?.data?.message || e.message || "Try again.",
+    });
+  } finally {
+    setAccepting(false);
+    setAcceptBidOpen(false);
+  }
+}
 
   const actionBtn =
     "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
@@ -891,7 +899,7 @@ function onChoosePayment(method) {
                       inputMode="numeric"
                       value={bidAmount}
                       onChange={(e) => setBidAmount(e.target.value)}
-                      disabled={!user || bidSending || listing?.biddingClosed}
+                      disabled={!user || bidSending || isOwner || listing?.biddingClosed}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
@@ -904,7 +912,7 @@ function onChoosePayment(method) {
                       type="button"
                       size="icon"
                       className="h-11 w-11 shrink-0 rounded-full"
-                      disabled={!user || bidSending}
+                      disabled={!user || bidSending || isOwner || listing?.biddingClosed}
                       onClick={requestBidConfirm}
                       aria-label="Place bid"
                       title="Place bid"
