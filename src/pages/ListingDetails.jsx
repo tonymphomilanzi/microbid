@@ -671,11 +671,11 @@ function onChoosePayment(method) {
               type="button"
               onClick={openBids}
               className="w-full bg-yellow-400 text-black hover:bg-yellow-500"
-              disabled={isOwner}
-              title={isOwner ? "You cannot bid on your own listing" : "Place a bid"}
+              disabled={false}
+              title={isOwner ? "View bids on your listing" : "Place a bid"}
             >
               <Gavel className="mr-2 h-4 w-4" />
-              Place bid
+             {isOwner ? "View bids" : "Place bid"}
             </Button>
 
             {/* Buy + Message */}
