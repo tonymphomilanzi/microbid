@@ -966,7 +966,7 @@ function onChoosePayment(method) {
         </AlertDialog>
 
      
-        <AlertDialog open={acceptBidOpen} onOpenChange={setAcceptBidOpen}>
+  <AlertDialog open={acceptBidOpen} onOpenChange={setAcceptBidOpen}>
   <AlertDialogContent>
     <AlertDialogHeader>
       <AlertDialogTitle>Accept highest bid?</AlertDialogTitle>
