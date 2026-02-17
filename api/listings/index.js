@@ -787,11 +787,15 @@ if (intent === "acceptHighestBid") {
           select: { id: true, price: true, status: true, sellerId: true, acceptedBidderId: true, acceptedBidAmount: true, acceptedBidId: true },
         });
 
+        if (!listing) return send(res, 404, { message: "Listing not available" });
+
         
         const allowedStatus = listing.acceptedBidId ? ["ACTIVE", "INACTIVE"] : ["ACTIVE"];
         if (!allowedStatus.includes(listing.status)) {
         return send(res, 404, { message: "Listing not available" });
 }
+
+
 
 
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });

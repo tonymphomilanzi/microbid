@@ -119,6 +119,18 @@ const [buyOpen, setBuyOpen] = useState(false);
   const [accepting, setAccepting] = useState(false);
 
 
+  const hasAcceptedBid = Boolean(listing?.acceptedBidId);
+const isWinner = Boolean(user && hasAcceptedBid && listing?.acceptedBidderId === user.uid);
+
+// if bid accepted, effective price is acceptedBidAmount (not listing.price)
+const effectivePrice = hasAcceptedBid ? Number(listing?.acceptedBidAmount ?? listing.price) : Number(listing?.price ?? 0);
+
+// canBuy rules:
+// - normal listing: must be ACTIVE and not owner
+// - accepted bid listing: only winner can buy (even if INACTIVE)
+const canBuy = !isOwner &&((listing?.status === "ACTIVE" && !hasAcceptedBid) || (hasAcceptedBid && isWinner));
+
+
 
 
 
@@ -417,10 +429,28 @@ async function acceptHighestConfirmed() {
     }
   }
 
- function buy() {
+
+function buy() {
   if (!user) return openAuthModal();
+
+  if (!canBuy) {
+    if (hasAcceptedBid && !isWinner) {
+      toast({ title: "Reserved", description: "This listing is reserved for the winning bidder." });
+      return;
+    }
+    if (listing?.status !== "ACTIVE" && !hasAcceptedBid) {
+      toast({ title: "Unavailable", description: "This listing is currently inactive." });
+      return;
+    }
+    if (isOwner) {
+      toast({ title: "Not allowed", description: "You cannot buy your own listing." });
+      return;
+    }
+  }
+
   setBuyOpen(true);
 }
+
 
 function onChoosePayment(method) {
   setBuyOpen(false);
@@ -674,6 +704,30 @@ function onChoosePayment(method) {
               </div>
             ) : null}
 
+
+
+{/* Accepted bid notice (if listing has accepted bid) */}
+{hasAcceptedBid ? (
+  <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+    {isWinner ? (
+      <div>
+        <div className="font-semibold">You won the bid</div>
+        <div className="text-muted-foreground">
+          Winning price: <span className="font-semibold text-foreground">${effectivePrice}</span>. You can proceed to payment.
+        </div>
+      </div>
+    ) : (
+      <div>
+        <div className="font-semibold">Reserved</div>
+        <div className="text-muted-foreground">
+          The seller accepted a bid. This listing is reserved for the winning bidder.
+        </div>
+      </div>
+    )}
+  </div>
+) : null}
+          
+
             {/* Place bid button (separate yellow) */}
             <Button
               type="button"
@@ -688,9 +742,9 @@ function onChoosePayment(method) {
 
             {/* Buy + Message */}
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={buy} className="gap-2">
-                <CreditCard className="h-4 w-4" />
-                Buy
+              <Button onClick={buy} className="gap-2" disabled={!canBuy}>
+                  <CreditCard className="h-4 w-4" />
+                     {hasAcceptedBid ? (isWinner ? `Pay $${effectivePrice}` : "Reserved") : "Buy"}
               </Button>
 
               <Button
@@ -996,7 +1050,7 @@ function onChoosePayment(method) {
         <PaymentMethodModal
   open={buyOpen}
   onOpenChange={setBuyOpen}
-  priceUsd={listing.price}
+  priceUsd={effectivePrice}
   onNext={onChoosePayment}
 />
       </div>
