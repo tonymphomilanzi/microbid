@@ -8,10 +8,12 @@ import {
   BellIcon,
   UserCircleIcon,
   NewspaperIcon,
+  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 
 export default function Navbar() {
-  const { user, authLoading, openAuthModal, unreadChats, unreadFeed, isAdmin } = useAuth();
+const { user, authLoading, openAuthModal, unreadChats, unreadFeed, unreadNotifications, isAdmin } = useAuth();
+
   const navigate = useNavigate();
 
   return (
@@ -69,28 +71,44 @@ export default function Navbar() {
 
         <div className="flex items-center gap-2">
           {authLoading ? (
-            // ✅ prevents "Login flash" while Firebase restores session
             <div className="h-10 w-24 rounded-md bg-muted/40" />
           ) : user ? (
             <>
+              {/* Notifications */}
+              <button
+                onClick={() => navigate("/notifications")}
+                className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+                aria-label="Notifications"
+                title="Notifications"
+              >
+                <BellIcon className="h-6 w-6" />
+                {unreadNotifications > 0 ? (
+                  <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
+                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                  </span>
+                ) : null}
+              </button>
+
+              {/* Inbox (chat) */}
               <button
                 onClick={() => navigate("/dashboard?tab=inbox")}
                 className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
-                aria-label="Chat notifications"
+                aria-label="Inbox"
                 title="Inbox"
               >
-                <BellIcon className="h-6 w-6" />
-                {unreadChats > 0 && (
+                <ChatBubbleLeftRightIcon className="h-6 w-6" />
+                {unreadChats > 0 ? (
                   <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
                     {unreadChats > 99 ? "99+" : unreadChats}
                   </span>
-                )}
+                ) : null}
               </button>
 
+              {/* Dashboard */}
               <button
                 onClick={() => navigate("/dashboard")}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
-                aria-label="Account"
+                aria-label="Dashboard"
                 title="Dashboard"
               >
                 <UserCircleIcon className="h-6 w-6" />

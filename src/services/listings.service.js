@@ -195,4 +195,13 @@ export const listingsService = {
 
     acceptHighestBid: (listingId) =>
   api.post("/listings", { intent: "acceptHighestBid", listingId }).then((r) => r.data),
+
+    getNotifications: (params) =>
+  api.get("/me", { params: { public: "notifications", ...params } }).then((r) => r.data),
+
+markNotificationsRead: (ids) =>
+  api.post("/me", { intent: "markNotificationsRead", ids }).then((r) => r.data),
+
+markAllNotificationsRead: () =>
+  api.post("/me", { intent: "markAllNotificationsRead" }).then((r) => r.data),
 };

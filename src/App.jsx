@@ -25,6 +25,7 @@ import usePresencePing from "./hooks/usePresencePing";
 import CheckoutPage from "./pages/CheckoutPage";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEscrows from "./pages/admin/AdminEscrows"; // NEW
+import Notifications from "./pages/Notifications";
 
 export default function App() {
   usePresencePing();
@@ -53,6 +54,17 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+
+          {/**Notifications route */}
+        <Route
+           path="/notifications"
+           element={
+           <ProtectedRoute>
+          <Notifications />
+         </ProtectedRoute>
+  }
+/>
         <Route
           path="/create"
           element={

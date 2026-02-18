@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     if (!resource) {
       return res.status(200).json({
         ok: true,
-        resources: ["users", "listings", "platforms", "categories", "feed", "settings"],
+        resources: ["users", "listings", "platforms", "categories", "feed", "settings", "escrows"],
       });
     }
 
@@ -497,6 +497,8 @@ if (resource === "escrows") {
     return res.status(200).json({ escrows });
   }
 
+  
+
   if (req.method === "PATCH") {
     if (!id) return res.status(400).json({ message: "Missing escrow id" });
     const body = readJson(req);
@@ -533,6 +535,9 @@ if (resource === "escrows") {
         orderBy: { createdAt: "desc" },
       });
 
+      const alreadyVerified = escrow.status === "FULLY_PAID";
+      const canNotify = Boolean(tx.notification);
+
       const updatedEscrow =
         escrow.status === "FULLY_PAID"
           ? escrow
@@ -554,17 +559,37 @@ if (resource === "escrows") {
             listingId: escrow.listingId,
             buyerId: escrow.buyerId,
             sellerId: escrow.sellerId,
-            amount: Math.trunc(Number(escrow.listing?.price ?? 0)),
+            amount: Math.trunc(Number(escrow.priceCents || 0) / 100),
             stripeSessionId: `MANUAL:${escrow.id}`, // reuse field to tag manual purchase
           },
         }));
 
-      // OPTIONAL: notification hook (replace with your system)
-      // Example fallback: store note in escrow
-      await tx.escrowTransaction.update({
-        where: { id },
-        data: { notes: [escrow.notes, `Verified by admin ${adminUid} at ${new Date().toISOString()}`].filter(Boolean).join("\n") },
-      });
+     // Send notifications ONLY once (avoid spamming on repeated PATCH)
+if (!alreadyVerified && canNotify) {
+  // Buyer notification
+  await tx.notification.create({
+    data: {
+      userId: escrow.buyerId,
+      type: "PAYMENT_VERIFIED",
+      title: "Payment verified",
+      body: "Your payment was verified. Transfer process will continue.",
+      url: `/listings/${escrow.listingId}`,
+      meta: { escrowId: escrow.id, listingId: escrow.listingId },
+    },
+  });
+
+  // Seller notification
+  await tx.notification.create({
+    data: {
+      userId: escrow.sellerId,
+      type: "SALE_CONFIRMED",
+      title: "Sale confirmed",
+      body: "Buyer payment has been verified. Please prepare for transfer.",
+      url: `/listings/${escrow.listingId}`,
+      meta: { escrowId: escrow.id, listingId: escrow.listingId },
+    },
+  });
+}
 
       return { escrow: updatedEscrow, purchase };
     });

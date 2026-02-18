@@ -94,13 +94,13 @@ async function recordFeedViewSmart(postId, uid, deviceId) {
             throw e;
           }
         }
-        return false; // no new unique view
+        return false;
       }
     }
 
     try {
       await prisma.feedPostView.create({ data: { postId, viewerKey: uKey } });
-      return true; // new unique view
+      return true;
     } catch (e) {
       if (e?.code === "P2002") return false;
       throw e;
@@ -118,6 +118,20 @@ async function recordFeedViewSmart(postId, uid, deviceId) {
   }
 
   return false;
+}
+
+// -----------------------------
+// Notifications helpers
+// -----------------------------
+function requireNotificationModel() {
+  if (!prisma.notification) {
+    const err = new Error(
+      "Prisma Client missing Notification model. Add Notification to schema.prisma, run `npx prisma generate`, redeploy."
+    );
+    err.statusCode = 500;
+    throw err;
+  }
+  return prisma.notification;
 }
 
 export default async function handler(req, res) {
@@ -234,7 +248,6 @@ export default async function handler(req, res) {
         },
       });
 
-      // ✅ record view only when requesting a single post
       const createdView = id ? await recordFeedViewSmart(id, uid, deviceId) : false;
 
       const posts = postsRaw.map((post) => {
@@ -257,6 +270,39 @@ export default async function handler(req, res) {
 
     // Everything else requires auth
     const decoded = await requireAuth(req);
+    const Notification = requireNotificationModel();
+
+    // -----------------------------
+    // AUTH: Notifications list
+    // GET /api/me?public=notifications&cursor=...
+    // cursor is an ISO date string of createdAt (pagination)
+    // -----------------------------
+    if (req.method === "GET" && q1(req.query?.public) === "notifications") {
+      const cursorRaw = String(q1(req.query?.cursor) || "").trim();
+      const cursorDate = cursorRaw ? new Date(cursorRaw) : null;
+
+      const where = {
+        userId: decoded.uid,
+        ...(cursorDate && !Number.isNaN(cursorDate.getTime())
+          ? { createdAt: { lt: cursorDate } }
+          : {}),
+      };
+
+      const notifications = await Notification.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      });
+
+      const unreadCount = await Notification.count({
+        where: { userId: decoded.uid, isRead: false },
+      });
+
+      const nextCursor =
+        notifications.length > 0 ? notifications[notifications.length - 1].createdAt.toISOString() : null;
+
+      return res.status(200).json({ notifications, unreadCount, nextCursor });
+    }
 
     // AUTH: feed unread count
     if (req.method === "GET" && q1(req.query?.feedUnread) === "1") {
@@ -273,7 +319,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ unreadFeedCount });
     }
 
-    // AUTH: main dashboard payload
+    // AUTH: main dashboard payload (+ unreadNotificationsCount)
     if (req.method === "GET") {
       const user = await prisma.user.upsert({
         where: { id: decoded.uid },
@@ -310,7 +356,18 @@ export default async function handler(req, res) {
 
       const pendingUpgradeRequest = user.upgradeRequests?.[0] ?? null;
 
-      return res.status(200).json({ user, plans, currentPlan, usage, pendingUpgradeRequest });
+      const unreadNotificationsCount = await Notification.count({
+        where: { userId: decoded.uid, isRead: false },
+      });
+
+      return res.status(200).json({
+        user,
+        plans,
+        currentPlan,
+        usage,
+        pendingUpgradeRequest,
+        unreadNotificationsCount, // ✅ new
+      });
     }
 
     // AUTH: POST intents
@@ -323,6 +380,35 @@ export default async function handler(req, res) {
       });
       const isAdmin = dbUserRole?.role === "ADMIN";
 
+      // -----------------------------
+      // Notifications: mark read
+      // -----------------------------
+      if (body.intent === "markNotificationsRead") {
+        const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+        if (!ids.length) return res.status(200).json({ ok: true });
+
+        await Notification.updateMany({
+          where: { userId: decoded.uid, id: { in: ids } },
+          data: { isRead: true },
+        });
+
+        const unreadCount = await Notification.count({
+          where: { userId: decoded.uid, isRead: false },
+        });
+
+        return res.status(200).json({ ok: true, unreadCount });
+      }
+
+      if (body.intent === "markAllNotificationsRead") {
+        await Notification.updateMany({
+          where: { userId: decoded.uid, isRead: false },
+          data: { isRead: true },
+        });
+
+        return res.status(200).json({ ok: true, unreadCount: 0 });
+      }
+
+      // existing intents...
       if (body.intent === "markFeedSeen") {
         await prisma.user.update({
           where: { id: decoded.uid },

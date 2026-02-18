@@ -590,6 +590,22 @@ if (intent === "acceptHighestBid") {
       },
     });
 
+    const canNotify = Boolean(tx.notification);
+
+//  notify the winner
+if (canNotify) {
+  await tx.notification.create({
+    data: {
+      userId: top.bidderId,
+      type: "BID_WON",
+      title: "You won the bid",
+      body: `Your bid of $${top.amount} was accepted. Complete payment to claim the listing.`,
+      url: `/listings/${listingId}`,
+      meta: { listingId, bidId: top.id, amount: top.amount },
+    },
+  });
+}
+
     return { listing: updatedListing, acceptedBid: top };
   });
 
