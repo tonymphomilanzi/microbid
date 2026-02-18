@@ -565,28 +565,60 @@ if (resource === "escrows") {
         }));
 
      // Send notifications ONLY once (avoid spamming on repeated PATCH)
+
 if (!alreadyVerified && canNotify) {
-  // Buyer notification
+  const listingTitle = escrow.listing?.title || "a listing";
+  const listingUrl = `/listings/${escrow.listingId}`;
+  const amountUsd = Math.trunc(Number(escrow.priceCents || 0) / 100);
+
+  // Buyer: purchase created
   await tx.notification.create({
     data: {
       userId: escrow.buyerId,
-      type: "PAYMENT_VERIFIED",
-      title: "Payment verified",
-      body: "Your payment was verified. Transfer process will continue.",
-      url: `/listings/${escrow.listingId}`,
-      meta: { escrowId: escrow.id, listingId: escrow.listingId },
+      type: "PURCHASE_CREATED",
+      title: "Purchase confirmed",
+      body: `Your purchase for "${listingTitle}" is confirmed.`,
+      url: listingUrl,
+      meta: {
+        escrowId: escrow.id,
+        listingId: escrow.listingId,
+        purchaseId: purchase.id,
+        amount: amountUsd,
+      },
     },
   });
 
-  // Seller notification
+  // Seller: sale confirmed (payment verified)
   await tx.notification.create({
     data: {
       userId: escrow.sellerId,
       type: "SALE_CONFIRMED",
       title: "Sale confirmed",
-      body: "Buyer payment has been verified. Please prepare for transfer.",
-      url: `/listings/${escrow.listingId}`,
-      meta: { escrowId: escrow.id, listingId: escrow.listingId },
+      body: `Buyer payment has been verified for "${listingTitle}". Prepare to transfer ownership.`,
+      url: listingUrl,
+      meta: {
+        escrowId: escrow.id,
+        listingId: escrow.listingId,
+        purchaseId: purchase.id,
+        amount: amountUsd,
+      },
+    },
+  });
+
+  // Seller: sale made (purchase record created)
+  await tx.notification.create({
+    data: {
+      userId: escrow.sellerId,
+      type: "SALE_MADE",
+      title: "You made a sale",
+      body: `You sold "${listingTitle}".`,
+      url: listingUrl,
+      meta: {
+        escrowId: escrow.id,
+        listingId: escrow.listingId,
+        purchaseId: purchase.id,
+        amount: amountUsd,
+      },
     },
   });
 }

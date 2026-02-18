@@ -905,28 +905,33 @@ if (canNotify) {
 // Buyer clicks "I have paid" and submits reference + optional proof URL.
 // Creates EscrowProof(kind=PAYMENT_PROOF) and moves status INITIATED -> FEE_PAID.
 // -----------------------------------------------------------------------
-          if (intent === "submitEscrowPayment") {
-          if (!checkRateLimitOr429(req, res, { scope: "post:submitEscrowPayment", limit: 15, windowMs: 60_000 }))
-          return;
+ if (intent === "submitEscrowPayment") {
+  if (
+    !checkRateLimitOr429(req, res, {
+      scope: "post:submitEscrowPayment",
+      limit: 15,
+      windowMs: 60_000,
+    })
+  )
+    return;
 
-          const escrowId = String(body.escrowId || "");
-          const reference = String(body.reference || "").trim();
-          const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
-          const note = body.note ? String(body.note).trim() : null;
+  const escrowId = String(body.escrowId || "");
+  const reference = String(body.reference || "").trim();
+  const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
+  const note = body.note ? String(body.note).trim() : null;
 
-      if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
-      if (!reference) return send(res, 400, { message: "Payment reference is required" });
+  if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
+  if (!reference) return send(res, 400, { message: "Payment reference is required" });
 
-      const result = await prisma.$transaction(async (tx) => {
-      await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
+  const result = await prisma.$transaction(async (tx) => {
+    await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
 
-      const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
-      if (!escrow) {
+    const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
+    if (!escrow) {
       const err = new Error("Escrow not found");
       err.statusCode = 404;
       throw err;
     }
-
 
     if (escrow.buyerId !== decoded.uid) {
       const err = new Error("Forbidden");
@@ -935,7 +940,10 @@ if (canNotify) {
     }
 
     // Prevent submitting if listing already sold
-    const purchase = await tx.purchase.findFirst({ where: { listingId: escrow.listingId }, select: { id: true } });
+    const purchase = await tx.purchase.findFirst({
+      where: { listingId: escrow.listingId },
+      select: { id: true },
+    });
     if (purchase) {
       const err = new Error("Listing already sold");
       err.statusCode = 409;
@@ -947,6 +955,18 @@ if (canNotify) {
       err.statusCode = 400;
       throw err;
     }
+
+    // only notify once when INITIATED -> FEE_PAID
+    const didTransition = escrow.status === "INITIATED";
+    const canNotify = Boolean(tx.notification);
+
+    // Load listing title for nicer messages (optional but recommended)
+    const listingRow = await tx.listing.findUnique({
+      where: { id: escrow.listingId },
+      select: { title: true },
+    });
+    const listingTitle = listingRow?.title || "this listing";
+    const listingUrl = `/listings/${escrow.listingId}`;
 
     const existingProof = await tx.escrowProof.findFirst({
       where: { escrowId, kind: "PAYMENT_PROOF", note: reference },
@@ -975,6 +995,33 @@ if (canNotify) {
       where: { id: escrow.listingId },
       data: { status: "INACTIVE" },
     });
+
+    // Notifications (manual-only flow)
+    if (didTransition && canNotify) {
+      // Seller: payment submitted (pending verification)
+      await tx.notification.create({
+        data: {
+          userId: escrow.sellerId,
+          type: "PAYMENT_SUBMITTED",
+          title: "Payment submitted",
+          body: `Buyer submitted payment details for "${listingTitle}". Pending verification.`,
+          url: listingUrl,
+          meta: { escrowId: escrow.id, listingId: escrow.listingId },
+        },
+      });
+
+      // Buyer: confirmation that they submitted payment details
+      await tx.notification.create({
+        data: {
+          userId: escrow.buyerId,
+          type: "PAYMENT_SUBMITTED",
+          title: "Payment submitted",
+          body: `Your payment details for "${listingTitle}" were submitted and are pending verification.`,
+          url: listingUrl,
+          meta: { escrowId: escrow.id, listingId: escrow.listingId },
+        },
+      });
+    }
 
     return { escrow: updatedEscrow, proof };
   });
