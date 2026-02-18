@@ -75,8 +75,8 @@ export default function Home() {
       {
         icon: CreditCard,
         title: "Flexible checkout",
-        desc: "(MOMO/BTC/Bank/WU).",
-      },
+        desc: ["MOMO", "BTC", "Bank", "WU"],
+},
     ],
     []
   );
@@ -371,14 +371,28 @@ export default function Home() {
 
 function TrustTile({ icon: Icon, title, desc }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-background/40 p-4 backdrop-blur transition hover:bg-muted/20">
-      <div className="flex items-center gap-2 text-sm font-semibold">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
+    <div className="rounded-2xl border border-border/60 bg-background/40 p-4 backdrop-blur transition hover:bg-muted/20 overflow-hidden">
+      <div className="flex items-center gap-2 text-sm font-semibold min-w-0">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
           <Icon className="h-4 w-4" />
         </span>
-        {title}
+        <span className="truncate">{title}</span>
       </div>
-      <div className="mt-2 text-sm text-muted-foreground leading-6">{desc}</div>
+
+      {Array.isArray(desc) ? (
+        <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          {desc.map((x) => (
+            <li key={x} className="flex items-center gap-2 min-w-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/70 shrink-0" />
+              <span className="truncate">{x}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-2 text-sm text-muted-foreground leading-6 break-words">
+          {desc}
+        </div>
+      )}
     </div>
   );
 }
