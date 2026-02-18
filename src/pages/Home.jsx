@@ -65,17 +65,17 @@ export default function Home() {
       {
         icon: ShieldCheck,
         title: "Escrow-first",
-        desc: "Reduce risk with payment verification and clear milestones.",
+        desc: "Reduce risk with secure escrow holding funds until successful transfer and verification.",
       },
       {
         icon: BadgeCheck,
         title: "Metrics-focused",
-        desc: "Listings are built around performance details—not hype.",
+        desc: "Listings showcase key stats to verify performance and value at a glance.",
       },
       {
         icon: CreditCard,
         title: "Flexible checkout",
-        desc: "Stripe-ready + manual options (MOMO/BTC/Bank/WU).",
+        desc: "(MOMO/BTC/Bank/WU).",
       },
     ],
     []
@@ -108,12 +108,7 @@ export default function Home() {
                   <Badge className="rounded-full bg-primary text-primary-foreground px-3 py-1">
                     Marketplace
                   </Badge>
-                  <Badge
-                    variant="outline"
-                    className="rounded-full border-border/60 bg-background/40 px-3 py-1"
-                  >
-                    Escrow + verified-style flow
-                  </Badge>
+                 
                   <Badge
                     variant="secondary"
                     className="rounded-full bg-muted/40 px-3 py-1"
@@ -131,7 +126,7 @@ export default function Home() {
                   </h1>
 
                   <p className="max-w-xl text-base sm:text-lg text-muted-foreground leading-7">
-                    A modern marketplace for YouTube channels, Instagram pages, TikTok profiles, and more—powered by a
+                    A modern marketplace for digital assets like YouTube channels, Instagram pages, TikTok profiles, and more powered by a
                     safer escrow flow and clear metrics.
                   </p>
                 </div>
@@ -263,12 +258,9 @@ export default function Home() {
                 </div>
 
                 {/* floating accent */}
-                <div className="pointer-events-none absolute -bottom-5 -right-4 hidden sm:block">
-                  <div className="rounded-2xl border border-border/60 bg-background/50 px-4 py-3 shadow-sm backdrop-blur">
-                    <div className="text-xs text-muted-foreground">Tip</div>
-                    <div className="text-sm font-medium">Open a listing to view full metrics</div>
-                  </div>
-                </div>
+              
+
+
               </div>
             </div>
           </div>
