@@ -726,7 +726,7 @@ if (intent === "acceptHighestBid") {
         if (text.length > 2000) return send(res, 400, { message: "Comment too long (max 2000 chars)" });
 
         const result = await prisma.$transaction(async (tx) => {
-          await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
+        await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
 
           const comment = await tx.listingComment.create({
             data: { listingId, authorId: decoded.uid, body: text },
@@ -757,7 +757,7 @@ if (intent === "acceptHighestBid") {
           };
         });
 
-        if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 201, result, 2 * 60_000);
+      if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 201, result, 2 * 60_000);
         return send(res, 201, result);
       }
 
@@ -800,23 +800,23 @@ if (intent === "acceptHighestBid") {
 
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
         // If a bid has been accepted, ONLY that bidder can pay, and price becomes accepted bid amount.
-if (listing.acceptedBidId) {
-  if (listing.acceptedBidderId !== decoded.uid) {
-    return send(res, 409, { message: "This listing is reserved for another buyer (bid accepted)." });
+        if (listing.acceptedBidId) {
+        if (listing.acceptedBidderId !== decoded.uid) {
+        return send(res, 409, { message: "This listing is reserved for another buyer (bid accepted)." });
   }
-  if (!listing.acceptedBidAmount) {
-    return send(res, 500, { message: "Accepted bid amount missing." });
+        if (!listing.acceptedBidAmount) {
+        return send(res, 500, { message: "Accepted bid amount missing." });
   }
 }
 
         const lock = await listingAlreadySoldOrLocked(listingId);
-if (lock.blocked && lock.buyerId !== decoded.uid) {
-  return send(res, 409, { message: "This listing is already reserved or sold." });
+        if (lock.blocked && lock.buyerId !== decoded.uid) {
+        return send(res, 409, { message: "This listing is already reserved or sold." });
 }
-if (lock.blocked && lock.reason === "SOLD") {
-  // Optionally sync listing status
-  await prisma.listing.update({ where: { id: listingId }, data: { status: "SOLD" } }).catch(() => {});
-  return send(res, 409, { message: "This listing is already sold." });
+        if (lock.blocked && lock.reason === "SOLD") {
+          // Optionally sync listing status
+         await prisma.listing.update({ where: { id: listingId }, data: { status: "SOLD" } }).catch(() => {});
+         return send(res, 409, { message: "This listing is already sold." });
 }
 
         const cfg = await getAppConfigCached();
@@ -889,27 +889,29 @@ if (lock.blocked && lock.reason === "SOLD") {
 // Buyer clicks "I have paid" and submits reference + optional proof URL.
 // Creates EscrowProof(kind=PAYMENT_PROOF) and moves status INITIATED -> FEE_PAID.
 // -----------------------------------------------------------------------
-if (intent === "submitEscrowPayment") {
-  if (!checkRateLimitOr429(req, res, { scope: "post:submitEscrowPayment", limit: 15, windowMs: 60_000 }))
-    return;
+          if (intent === "submitEscrowPayment") {
+          if (!checkRateLimitOr429(req, res, { scope: "post:submitEscrowPayment", limit: 15, windowMs: 60_000 }))
+          return;
 
-  const escrowId = String(body.escrowId || "");
-  const reference = String(body.reference || "").trim();
-  const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
-  const note = body.note ? String(body.note).trim() : null;
+          const escrowId = String(body.escrowId || "");
+          const reference = String(body.reference || "").trim();
+          const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
+          const note = body.note ? String(body.note).trim() : null;
 
-  if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
-  if (!reference) return send(res, 400, { message: "Payment reference is required" });
+      if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
+      if (!reference) return send(res, 400, { message: "Payment reference is required" });
 
-  const result = await prisma.$transaction(async (tx) => {
-    await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
+      const result = await prisma.$transaction(async (tx) => {
+      await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
 
-    const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
-    if (!escrow) {
+      const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
+      if (!escrow) {
       const err = new Error("Escrow not found");
       err.statusCode = 404;
       throw err;
     }
+
+
     if (escrow.buyerId !== decoded.uid) {
       const err = new Error("Forbidden");
       err.statusCode = 403;
@@ -1132,7 +1134,7 @@ if (intent === "submitEscrowPayment") {
           });
         });
 
-        return send(res, 200, { listing: updated });
+       return send(res, 200, { listing: updated });
       }
 
       const created = await prisma.listing.create({
@@ -1167,11 +1169,11 @@ if (intent === "submitEscrowPayment") {
       return send(res, 201, { listing: created });
     }
 
-    res.setHeader("Allow", "GET, POST");
+     res.setHeader("Allow", "GET, POST");
     return send(res, 405, { message: "Method not allowed" });
   } catch (e) {
     // This will appear in Vercel function logs:
-    console.error("API /listings crashed:", e);
-    return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
+     console.error("API /listings crashed:", e);
+     return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
   }
 }

@@ -1,12 +1,12 @@
+
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
-import { useNavigate } from "react-router-dom";
 import PaymentMethodModal from "../components/checkout/PaymentMethodModal";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../components/ui/drawer";
 import {
@@ -41,10 +41,7 @@ import UserAvatar from "../components/shared/UserAvatar";
 function SellerHandle({ username }) {
   if (username) return <span className="truncate text-sm font-medium">@{username}</span>;
   return (
-    <span
-      className="truncate text-sm font-medium select-none blur-[3px]"
-      title="Seller username not set"
-    >
+    <span className="truncate text-sm font-medium select-none blur-[3px]" title="Seller username not set">
       @private_seller
     </span>
   );
@@ -59,24 +56,19 @@ const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const isOnline = (ts) => (ts ? Date.now() - new Date(ts).getTime() < ONLINE_WINDOW_MS : false);
 
 function moneyOrDash(v) {
-  // income/expense are Int? in Prisma, so could be null/undefined
   if (v === null || v === undefined) return "—";
   const n = Number(v);
   if (!Number.isFinite(n)) return "—";
   return `$${n}`;
 }
 
-
-
 export default function ListingDetails() {
-
   const navigate = useNavigate();
-const [buyOpen, setBuyOpen] = useState(false);
-
-
   const { id } = useParams();
   const { user, authReady, openAuthModal } = useAuth();
   const { toast } = useToast();
+
+  const [buyOpen, setBuyOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState(null);
@@ -108,76 +100,32 @@ const [buyOpen, setBuyOpen] = useState(false);
   const [bidSending, setBidSending] = useState(false);
   const [highestBid, setHighestBid] = useState(0);
   const [bidCount, setBidCount] = useState(0);
-  const [topBidder, setTopBidder] = useState(null); // bidder object
+  const [topBidder, setTopBidder] = useState(null);
   const [myTopBid, setMyTopBid] = useState(0);
 
   // Confirm bid dialog
   const [confirmBidOpen, setConfirmBidOpen] = useState(false);
   const [pendingBidAmount, setPendingBidAmount] = useState(0);
 
+  // Accept highest bid dialog
   const [acceptBidOpen, setAcceptBidOpen] = useState(false);
   const [accepting, setAccepting] = useState(false);
 
+  // -----------------------------
+  // Derived flags (MUST be defined before use)
+  // -----------------------------
+  const isOwner = Boolean(user && listing?.sellerId === user.uid);
 
   const hasAcceptedBid = Boolean(listing?.acceptedBidId);
-const isWinner = Boolean(user && hasAcceptedBid && listing?.acceptedBidderId === user.uid);
+  const isWinner = Boolean(user && hasAcceptedBid && listing?.acceptedBidderId === user.uid);
 
-// if bid accepted, effective price is acceptedBidAmount (not listing.price)
-const effectivePrice = hasAcceptedBid ? Number(listing?.acceptedBidAmount ?? listing.price) : Number(listing?.price ?? 0);
+  const effectivePrice = hasAcceptedBid
+    ? Number(listing?.acceptedBidAmount ?? listing?.price ?? 0)
+    : Number(listing?.price ?? 0);
 
-// canBuy rules:
-// - normal listing: must be ACTIVE and not owner
-// - accepted bid listing: only winner can buy (even if INACTIVE)
-const canBuy = !isOwner &&((listing?.status === "ACTIVE" && !hasAcceptedBid) || (hasAcceptedBid && isWinner));
-
-
-
-
-
-
-
-  function requestAcceptHighest() {
-  if (!isOwner) return;
-  setAcceptBidOpen(true);
-}
-
-async function acceptHighestConfirmed() {
-  if (!isOwner) return;
-
-  setAccepting(true);
-  try {
-    const res = await listingsService.acceptHighestBid(id);
-
-    // update local listing state so UI disables bidding immediately
-    setListing((prev) =>
-      prev
-        ? {
-            ...prev,
-            biddingClosed: true,
-            status: "INACTIVE",
-            acceptedBidId: res.listing?.acceptedBidId,
-            acceptedBidderId: res.listing?.acceptedBidderId,
-            acceptedBidAmount: res.listing?.acceptedBidAmount,
-          }
-        : prev
-    );
-
-    toast({
-      title: "Bid accepted",
-      description: `Accepted highest bid $${res.acceptedBid?.amount || ""}`,
-    });
-
-    setBidsOpen(false);
-  } catch (e) {
-    toast({
-      title: "Could not accept bid",
-      description: e?.response?.data?.message || e.message || "Try again.",
-    });
-  } finally {
-    setAccepting(false);
-    setAcceptBidOpen(false);
-  }
-}
+  const canBuy =
+    !isOwner &&
+    ((listing?.status === "ACTIVE" && !hasAcceptedBid) || (hasAcceptedBid && isWinner));
 
   const actionBtn =
     "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
@@ -194,6 +142,9 @@ async function acceptHighestConfirmed() {
     });
   }
 
+  // -----------------------------
+  // Load listing + preload bid summary
+  // -----------------------------
   useEffect(() => {
     let mounted = true;
 
@@ -220,7 +171,7 @@ async function acceptHighestConfirmed() {
         setLikeCount(Number(listing?.likeCount ?? 0));
         setCommentCount(Number(listing?.commentCount ?? 0));
 
-        // preload bid summary (top bidder/highest/count) without opening drawer
+        // preload bid summary
         try {
           const res = await listingsService.listListingBids(id);
           if (!mounted) return;
@@ -241,7 +192,7 @@ async function acceptHighestConfirmed() {
             setMyTopBid(0);
           }
         } catch {
-          // ignore if bids endpoint not ready
+          // ignore
         }
       } catch (e) {
         const msg = e?.response?.data?.message || e.message || "Failed to load listing";
@@ -263,14 +214,60 @@ async function acceptHighestConfirmed() {
 
   const shareUrl = useMemo(() => `${window.location.origin}/listings/${id}`, [id]);
 
-  const isOwner = Boolean(user && listing?.sellerId === user.uid);
-
   const minBid = useMemo(() => {
     const price = Number(listing?.price ?? 0);
     const hb = Number(highestBid ?? 0);
     return Math.max(price, hb) + 1;
   }, [listing?.price, highestBid]);
 
+  // -----------------------------
+  // Seller accepts highest bid
+  // -----------------------------
+  function requestAcceptHighest() {
+    if (!isOwner) return;
+    setAcceptBidOpen(true);
+  }
+
+  async function acceptHighestConfirmed() {
+    if (!isOwner) return;
+
+    setAccepting(true);
+    try {
+      const res = await listingsService.acceptHighestBid(id);
+
+      setListing((prev) =>
+        prev
+          ? {
+              ...prev,
+              biddingClosed: true,
+              status: "INACTIVE",
+              acceptedBidId: res.listing?.acceptedBidId,
+              acceptedBidderId: res.listing?.acceptedBidderId,
+              acceptedBidAmount: res.listing?.acceptedBidAmount,
+            }
+          : prev
+      );
+
+      toast({
+        title: "Bid accepted",
+        description: `Accepted highest bid $${res.acceptedBid?.amount ?? ""}`,
+      });
+
+      setBidsOpen(false);
+    } catch (e) {
+      toast({
+        title: "Could not accept bid",
+        description: e?.response?.data?.message || e.message || "Try again.",
+      });
+    } finally {
+      setAccepting(false);
+      setAcceptBidOpen(false);
+    }
+  }
+
+  // -----------------------------
+  // Likes / Comments
+  // -----------------------------
   async function onToggleLike() {
     if (!user) return needLoginToast();
 
@@ -336,6 +333,9 @@ async function acceptHighestConfirmed() {
     }
   }
 
+  // -----------------------------
+  // Bids
+  // -----------------------------
   async function openBids() {
     setBidsOpen(true);
     setBidsLoading(true);
@@ -371,11 +371,13 @@ async function acceptHighestConfirmed() {
   }
 
   function requestBidConfirm() {
-    if (listing?.biddingClosed) {
-  toast({ title: "Bidding closed", description: "The seller has closed bidding for this listing." });
-  return;
-}
+    if (listing?.biddingClosed || listing?.acceptedBidId) {
+      toast({ title: "Bidding closed", description: "The seller has closed bidding for this listing." });
+      return;
+    }
+
     if (!user) return needLoginToast();
+
     if (isOwner) {
       toast({ title: "Not allowed", description: "You cannot bid on your own listing." });
       return;
@@ -414,7 +416,6 @@ async function acceptHighestConfirmed() {
         return next.slice(0, 50);
       });
 
-      // update top bidder quickly (best-effort)
       if (res?.bid?.bidder) setTopBidder(res.bid.bidder);
 
       setBidAmount("");
@@ -429,39 +430,43 @@ async function acceptHighestConfirmed() {
     }
   }
 
+  // -----------------------------
+  // Buy / Chat
+  // -----------------------------
+  function buy() {
+    if (!user) return openAuthModal();
 
-function buy() {
-  if (!user) return openAuthModal();
+    if (!canBuy) {
+      if (hasAcceptedBid && !isWinner) {
+        toast({ title: "Reserved", description: "This listing is reserved for the winning bidder." });
+        return;
+      }
+      if (listing?.status !== "ACTIVE" && !hasAcceptedBid) {
+        toast({ title: "Unavailable", description: "This listing is currently inactive." });
+        return;
+      }
+      if (isOwner) {
+        toast({ title: "Not allowed", description: "You cannot buy your own listing." });
+        return;
+      }
+    }
 
-  if (!canBuy) {
-    if (hasAcceptedBid && !isWinner) {
-      toast({ title: "Reserved", description: "This listing is reserved for the winning bidder." });
-      return;
-    }
-    if (listing?.status !== "ACTIVE" && !hasAcceptedBid) {
-      toast({ title: "Unavailable", description: "This listing is currently inactive." });
-      return;
-    }
-    if (isOwner) {
-      toast({ title: "Not allowed", description: "You cannot buy your own listing." });
-      return;
-    }
+    setBuyOpen(true);
   }
 
-  setBuyOpen(true);
-}
-
-
-function onChoosePayment(method) {
-  setBuyOpen(false);
-  navigate(`/checkout/${id}?method=${encodeURIComponent(method)}`);
-}
+  function onChoosePayment(method) {
+    setBuyOpen(false);
+    navigate(`/checkout/${id}?method=${encodeURIComponent(method)}`);
+  }
 
   function chat() {
     if (!user) return openAuthModal();
     setChatOpen(true);
   }
 
+  // -----------------------------
+  // Render states
+  // -----------------------------
   if (loading) {
     return (
       <PageContainer>
@@ -548,9 +553,7 @@ function onChoosePayment(method) {
               <h1 className="text-2xl font-semibold tracking-tight">{listing.title}</h1>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{listing.platform}</Badge>
-                {listing.category?.name ? (
-                  <Badge variant="outline">{listing.category.name}</Badge>
-                ) : null}
+                {listing.category?.name ? <Badge variant="outline">{listing.category.name}</Badge> : null}
               </div>
             </div>
 
@@ -564,6 +567,11 @@ function onChoosePayment(method) {
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Price</div>
                   <div className="text-lg font-semibold">${listing.price}</div>
+                  {hasAcceptedBid ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Accepted bid: <span className="font-semibold text-foreground">${effectivePrice}</span>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
 
@@ -579,10 +587,7 @@ function onChoosePayment(method) {
                     />
                     <SellerHandle username={username} />
                     {verified ? (
-                      <span
-                        className="inline-flex items-center gap-1 text-xs text-primary"
-                        title="Verified seller"
-                      >
+                      <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
                         <BadgeCheck className="h-4 w-4" />
                         Verified
                       </span>
@@ -592,7 +597,7 @@ function onChoosePayment(method) {
               </Card>
             </div>
 
-            {/* NEW: income/expense/net */}
+            {/* income/expense/net */}
             <div className="grid grid-cols-3 gap-3">
               <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
@@ -663,20 +668,12 @@ function onChoosePayment(method) {
                 <span className="font-medium">{likeCount}</span>
               </button>
 
-              <button
-                type="button"
-                className={`${actionBtn} border-x border-border/60`}
-                onClick={openComments}
-              >
+              <button type="button" className={`${actionBtn} border-x border-border/60`} onClick={openComments}>
                 <MessageSquare className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">{commentCount}</span>
               </button>
 
-              <ShareSheet
-                url={shareUrl}
-                title={listing.title}
-                text={(listing.description || "").slice(0, 120)}
-              >
+              <ShareSheet url={shareUrl} title={listing.title} text={(listing.description || "").slice(0, 120)}>
                 <button type="button" className={actionBtn}>
                   <Share2 className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium">Share</span>
@@ -684,15 +681,14 @@ function onChoosePayment(method) {
               </ShareSheet>
             </div>
 
-            {/* Bid summary + outbid notice */}
+            {/* Bid summary */}
             <div className="text-xs text-muted-foreground">
               Top bidder:{" "}
               <span className="font-semibold text-foreground">
                 {topBidder?.username ? `@${topBidder.username}` : "—"}
               </span>{" "}
-              • Highest bid:{" "}
-              <span className="font-semibold text-foreground">${highestBid || 0}</span> • Minimum next
-              bid: <span className="font-semibold text-foreground">${minBid}</span>
+              • Highest bid: <span className="font-semibold text-foreground">${highestBid || 0}</span> • Minimum next bid:{" "}
+              <span className="font-semibold text-foreground">${minBid}</span>
             </div>
 
             {user && myTopBid > 0 && myTopBid < highestBid ? (
@@ -704,47 +700,44 @@ function onChoosePayment(method) {
               </div>
             ) : null}
 
+            {/* Accepted bid notice */}
+            {hasAcceptedBid ? (
+              <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                {isWinner ? (
+                  <div>
+                    <div className="font-semibold">You won the bid</div>
+                    <div className="text-muted-foreground">
+                      Winning price:{" "}
+                      <span className="font-semibold text-foreground">${effectivePrice}</span>. You can proceed to payment.
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="font-semibold">Reserved</div>
+                    <div className="text-muted-foreground">
+                      The seller accepted a bid. This listing is reserved for the winning bidder.
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
-
-{/* Accepted bid notice (if listing has accepted bid) */}
-{hasAcceptedBid ? (
-  <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
-    {isWinner ? (
-      <div>
-        <div className="font-semibold">You won the bid</div>
-        <div className="text-muted-foreground">
-          Winning price: <span className="font-semibold text-foreground">${effectivePrice}</span>. You can proceed to payment.
-        </div>
-      </div>
-    ) : (
-      <div>
-        <div className="font-semibold">Reserved</div>
-        <div className="text-muted-foreground">
-          The seller accepted a bid. This listing is reserved for the winning bidder.
-        </div>
-      </div>
-    )}
-  </div>
-) : null}
-          
-
-            {/* Place bid button (separate yellow) */}
+            {/* Open bids drawer (owner can open too) */}
             <Button
               type="button"
               onClick={openBids}
               className="w-full bg-yellow-400 text-black hover:bg-yellow-500"
-              disabled={false}
               title={isOwner ? "View bids on your listing" : "Place a bid"}
             >
               <Gavel className="mr-2 h-4 w-4" />
-             {isOwner ? "View bids" : "Place bid"}
+              {isOwner ? "View bids" : "Place bid"}
             </Button>
 
             {/* Buy + Message */}
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button onClick={buy} className="gap-2" disabled={!canBuy}>
-                  <CreditCard className="h-4 w-4" />
-                     {hasAcceptedBid ? (isWinner ? `Pay $${effectivePrice}` : "Reserved") : "Buy"}
+                <CreditCard className="h-4 w-4" />
+                {hasAcceptedBid ? (isWinner ? `Pay $${effectivePrice}` : "Reserved") : "Buy"}
               </Button>
 
               <Button
@@ -763,7 +756,7 @@ function onChoosePayment(method) {
 
         <ChatDialog open={chatOpen} onOpenChange={setChatOpen} currentUser={user} listing={listing} />
 
-        {/* Comments bottom sheet */}
+        {/* Comments drawer */}
         <Drawer open={commentsOpen} onOpenChange={setCommentsOpen}>
           <DrawerContent className="max-h-[85vh]">
             <div className="mx-auto w-full max-w-2xl px-4 pb-4">
@@ -857,34 +850,33 @@ function onChoosePayment(method) {
           </DrawerContent>
         </Drawer>
 
-        {/* Bids bottom sheet */}
+        {/* Bids drawer */}
         <Drawer open={bidsOpen} onOpenChange={setBidsOpen}>
           <DrawerContent className="max-h-[85vh]">
             <div className="mx-auto w-full max-w-2xl px-4 pb-4">
               <DrawerHeader className="px-0">
-  <div className="flex items-start justify-between gap-3">
-    <div>
-      <DrawerTitle>Bids</DrawerTitle>
-      <div className="text-xs text-muted-foreground">
-        {bidCount} bids • Highest ${highestBid || 0}
-        {listing?.biddingClosed ? " • Bidding closed" : ""}
-      </div>
-    </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <DrawerTitle>Bids</DrawerTitle>
+                    <div className="text-xs text-muted-foreground">
+                      {bidCount} bids • Highest ${highestBid || 0}
+                      {listing?.biddingClosed || listing?.acceptedBidId ? " • Bidding closed" : ""}
+                    </div>
+                  </div>
 
-    {/* Only owner sees accept button */}
-    {isOwner && !listing?.biddingClosed ? (
-      <Button
-        size="sm"
-        className="bg-yellow-400 text-black hover:bg-yellow-500"
-        onClick={requestAcceptHighest}
-        disabled={accepting || bidCount === 0}
-        title={bidCount === 0 ? "No bids to accept" : "Accept highest bid"}
-      >
-        {accepting ? "Accepting..." : "Accept highest"}
-      </Button>
-    ) : null}
-  </div>
-</DrawerHeader>
+                  {isOwner && !(listing?.biddingClosed || listing?.acceptedBidId) ? (
+                    <Button
+                      size="sm"
+                      className="bg-yellow-400 text-black hover:bg-yellow-500"
+                      onClick={requestAcceptHighest}
+                      disabled={accepting || bidCount === 0}
+                      title={bidCount === 0 ? "No bids to accept" : "Accept highest bid"}
+                    >
+                      {accepting ? "Accepting..." : "Accept highest"}
+                    </Button>
+                  ) : null}
+                </div>
+              </DrawerHeader>
 
               <div className="flex h-[70vh] flex-col">
                 <div className="flex-1 overflow-auto pr-1 space-y-3">
@@ -942,61 +934,62 @@ function onChoosePayment(method) {
                   )}
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-border/60 bg-card/60 p-3">
-                  <div className="text-xs text-muted-foreground mb-2">
-                    Minimum bid: <span className="font-semibold text-foreground">${minBid}</span>
-                  </div>
+                {/* Bid input: hidden for owner */}
+                {!isOwner ? (
+                  <div className="mt-3 rounded-2xl border border-border/60 bg-card/60 p-3">
+                    <div className="text-xs text-muted-foreground mb-2">
+                      Minimum bid: <span className="font-semibold text-foreground">${minBid}</span>
+                    </div>
 
-                  <div className="flex items-end gap-2">
-                    <Input
-                      placeholder="Enter bid amount"
-                      inputMode="numeric"
-                      value={bidAmount}
-                      onChange={(e) => setBidAmount(e.target.value)}
-                      disabled={!user || bidSending || isOwner || listing?.biddingClosed}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          requestBidConfirm();
-                        }
-                      }}
-                    />
-
-                    <Button
-                      type="button"
-                      size="icon"
-                      className="h-11 w-11 shrink-0 rounded-full"
-                      disabled={!user || bidSending || isOwner || listing?.biddingClosed}
-                      onClick={requestBidConfirm}
-                      aria-label="Place bid"
-                      title="Place bid"
-                    >
-                      <Send className="h-5 w-5" />
-                    </Button>
-                  </div>
-
-                  {!user ? (
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      You must be logged in to bid.{" "}
-                      <button
-                        type="button"
-                        className="text-primary underline underline-offset-4"
-                        onClick={() => {
-                          needLoginToast();
-                          openAuthModal?.();
+                    <div className="flex items-end gap-2">
+                      <Input
+                        placeholder="Enter bid amount"
+                        inputMode="numeric"
+                        value={bidAmount}
+                        onChange={(e) => setBidAmount(e.target.value)}
+                        disabled={!user || bidSending || listing?.biddingClosed || listing?.acceptedBidId}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            requestBidConfirm();
+                          }
                         }}
-                      >
-                        Login
-                      </button>
-                    </div>
-                  ) : null}
+                      />
 
-                  {isOwner ? (
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      You are the seller; bidding is disabled.
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="h-11 w-11 shrink-0 rounded-full"
+                        disabled={!user || bidSending || listing?.biddingClosed || listing?.acceptedBidId}
+                        onClick={requestBidConfirm}
+                        aria-label="Place bid"
+                        title="Place bid"
+                      >
+                        <Send className="h-5 w-5" />
+                      </Button>
                     </div>
-                  ) : null}
-                </div>
+
+                    {!user ? (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        You must be logged in to bid.{" "}
+                        <button
+                          type="button"
+                          className="text-primary underline underline-offset-4"
+                          onClick={() => {
+                            needLoginToast();
+                            openAuthModal?.();
+                          }}
+                        >
+                          Login
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-border/60 bg-muted/10 p-3 text-sm text-muted-foreground">
+                    You are the seller. You can’t bid, but you can accept the highest bid.
+                  </div>
+                )}
               </div>
             </div>
           </DrawerContent>
@@ -1017,42 +1010,39 @@ function onChoosePayment(method) {
 
             <AlertDialogFooter>
               <AlertDialogCancel disabled={bidSending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={bidSending}
-                onClick={() => sendBidConfirmed(pendingBidAmount)}
-              >
+              <AlertDialogAction disabled={bidSending} onClick={() => sendBidConfirmed(pendingBidAmount)}>
                 {bidSending ? "Placing..." : "Yes, place bid"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
-     
-  <AlertDialog open={acceptBidOpen} onOpenChange={setAcceptBidOpen}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Accept highest bid?</AlertDialogTitle>
-      <AlertDialogDescription>
-        This will close bidding and reserve the listing for the highest bidder.
-        Other buyers will not be able to pay for this listing.
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel disabled={accepting}>Cancel</AlertDialogCancel>
-      <AlertDialogAction disabled={accepting} onClick={acceptHighestConfirmed}>
-        {accepting ? "Accepting..." : "Yes, accept"}
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
+        {/* Accept highest bid dialog */}
+        <AlertDialog open={acceptBidOpen} onOpenChange={setAcceptBidOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Accept highest bid?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will close bidding and reserve the listing for the highest bidder. Other buyers will not be able to
+                pay for this listing.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={accepting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction disabled={accepting} onClick={acceptHighestConfirmed}>
+                {accepting ? "Accepting..." : "Yes, accept"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-
+        {/* Payment method modal */}
         <PaymentMethodModal
-  open={buyOpen}
-  onOpenChange={setBuyOpen}
-  priceUsd={effectivePrice}
-  onNext={onChoosePayment}
-/>
+          open={buyOpen}
+          onOpenChange={setBuyOpen}
+          priceUsd={effectivePrice}
+          onNext={onChoosePayment}
+        />
       </div>
     </PageContainer>
   );
