@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
@@ -123,12 +122,35 @@ export default function ListingDetails() {
     ? Number(listing?.acceptedBidAmount ?? listing?.price ?? 0)
     : Number(listing?.price ?? 0);
 
+  // User payment state (from backend /api/listings/:id)
+  const myEscrow = listing?.myEscrow ?? null;
+  const myEscrowStatus = myEscrow?.status ?? null;
+  const myPurchase = listing?.myPurchase ?? null;
+
+  // "paid" in your manual flow = FEE_PAID (submitted) or FULLY_PAID (verified)
+  const hasPaidOrSubmitted = Boolean(user && ["FEE_PAID", "FULLY_PAID"].includes(myEscrowStatus));
+  const isVerifiedPaid = Boolean(user && myEscrowStatus === "FULLY_PAID");
+  const hasPurchased = Boolean(user && myPurchase);
+
+  // This is what disables the Pay/Buy button and prevents the modal
+  const disablePayButton = hasPaidOrSubmitted || hasPurchased;
+
+  // Listing locked by someone else (optional — backend returns paymentLock without buyerId)
+  const paymentLock = listing?.paymentLock ?? null;
+  const lockedForOtherBuyer =
+    Boolean(paymentLock) && !disablePayButton && !(hasAcceptedBid && isWinner) && !isOwner;
+
   const canBuy =
     !isOwner &&
     ((listing?.status === "ACTIVE" && !hasAcceptedBid) || (hasAcceptedBid && isWinner));
 
   const actionBtn =
     "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
+
+  useEffect(() => {
+    // Safety: if state flips to "paid", close the modal immediately.
+    if (buyOpen && disablePayButton) setBuyOpen(false);
+  }, [buyOpen, disablePayButton]);
 
   function needLoginToast() {
     toast({
@@ -436,6 +458,24 @@ export default function ListingDetails() {
   function buy() {
     if (!user) return openAuthModal();
 
+    // IMPORTANT: do not open the payment modal if already paid/submitted
+    if (disablePayButton) {
+      toast({
+        title: "Already paid",
+        description: "You already submitted payment for this listing. Please wait for verification (check Notifications).",
+      });
+      return;
+    }
+
+    // If locked by another buyer’s payment
+    if (lockedForOtherBuyer) {
+      toast({
+        title: "Reserved",
+        description: "Another buyer has already submitted payment for this listing.",
+      });
+      return;
+    }
+
     if (!canBuy) {
       if (hasAcceptedBid && !isWinner) {
         toast({ title: "Reserved", description: "This listing is reserved for the winning bidder." });
@@ -504,6 +544,14 @@ export default function ListingDetails() {
     income === null || income === undefined || expense === null || expense === undefined
       ? null
       : Number(income) - Number(expense);
+
+  const buyBtnLabel = (() => {
+    if (disablePayButton) return "You bought this";
+    if (hasAcceptedBid) return isWinner ? `Pay $${effectivePrice}` : "Reserved";
+    if (listing?.status === "SOLD") return "Sold";
+    if (!canBuy) return "Unavailable";
+    return "Buy";
+  })();
 
   return (
     <PageContainer>
@@ -708,7 +756,7 @@ export default function ListingDetails() {
                     <div className="font-semibold">You won the bid</div>
                     <div className="text-muted-foreground">
                       Winning price:{" "}
-                      <span className="font-semibold text-foreground">${effectivePrice}</span>. You can proceed to payment.
+                      <span className="font-semibold text-foreground">${effectivePrice}</span>.
                     </div>
                   </div>
                 ) : (
@@ -719,6 +767,30 @@ export default function ListingDetails() {
                     </div>
                   </div>
                 )}
+              </div>
+            ) : null}
+
+            {/* Payment status messages (THIS IS WHAT YOU ASKED FOR) */}
+            {hasPurchased || isVerifiedPaid ? (
+              <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                <div className="font-semibold">Purchase confirmed</div>
+                <div className="text-muted-foreground">
+                  You bought this listing. Check Notifications for the next steps (ownership transfer).
+                </div>
+              </div>
+            ) : hasPaidOrSubmitted ? (
+              <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                <div className="font-semibold">Payment submitted</div>
+                <div className="text-muted-foreground">
+                  Your payment is pending verification. We’ll notify you once it’s confirmed.
+                </div>
+              </div>
+            ) : lockedForOtherBuyer ? (
+              <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                <div className="font-semibold">Reserved</div>
+                <div className="text-muted-foreground">
+                  Another buyer has already submitted payment for this listing.
+                </div>
               </div>
             ) : null}
 
@@ -735,9 +807,13 @@ export default function ListingDetails() {
 
             {/* Buy + Message */}
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button onClick={buy} className="gap-2" disabled={!canBuy}>
+              <Button
+                onClick={buy}
+                className="gap-2"
+                disabled={disablePayButton || !canBuy || lockedForOtherBuyer}
+              >
                 <CreditCard className="h-4 w-4" />
-                {hasAcceptedBid ? (isWinner ? `Pay $${effectivePrice}` : "Reserved") : "Buy"}
+                {buyBtnLabel}
               </Button>
 
               <Button

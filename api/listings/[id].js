@@ -4,11 +4,11 @@
 //   GET    /api/listings/:id
 //   DELETE /api/listings/:id     (auth; owner only)
 //
-// Improvements added (without breaking response shapes):
-//   income/expense automatically included (Prisma returns scalar fields by default)
-//   best-effort rate limiting (in-memory; per warm lambda instance)
-//   race-condition reduction for view recording using Postgres advisory locks
-//   refactor + comments so it’s easy to find sections
+// Includes:
+//   - rate limiting (in-memory)
+//   - smart view recording (device->user merge) using Postgres advisory locks
+//   - buyer status for listing details page:
+//       listing.myEscrow, listing.myPurchase, listing.paymentLock
 // -----------------------------------------------------------------------------
 
 import { prisma } from "../_lib/prisma.js";
@@ -109,7 +109,6 @@ async function recordListingViewSmartTx(tx, listingId, uid, deviceId) {
   if (!uKey && !dKey) return false;
 
   // Lock per listing and viewer identities to serialize view writes
-  // (prevents two concurrent requests double-inserting / conflicting updates)
   await advisoryLock(tx, `view:${listingId}`);
   if (uKey) await advisoryLock(tx, `view:${listingId}:${uKey}`);
   if (dKey) await advisoryLock(tx, `view:${listingId}:${dKey}`);
@@ -124,8 +123,6 @@ async function recordListingViewSmartTx(tx, listingId, uid, deviceId) {
       });
 
       if (existingDevice) {
-        // Attempt to update device row to user key.
-        // This can hit unique constraint if user view already exists.
         try {
           await tx.listingView.update({
             where: { listingId_viewerKey: { listingId, viewerKey: dKey } },
@@ -196,7 +193,7 @@ export default async function handler(req, res) {
       const listing = await prisma.listing.findUnique({
         where: { id },
         include: {
-          // NOTE: Scalar fields (including income/expense) come automatically
+          // NOTE: Scalar fields (including income/expense/metrics) come automatically
           seller: {
             select: {
               id: true,
@@ -247,6 +244,68 @@ export default async function handler(req, res) {
       // Remove internal helper objects
       delete safeListing._count;
       if (safeListing.likes) delete safeListing.likes;
+
+      // -----------------------------
+      // NEW: Buyer status fields
+      // -----------------------------
+      // For the logged-in user, return their escrow/purchase so the UI can:
+      // - disable Pay button after "I have paid" (FEE_PAID)
+      // - show "Payment submitted" / "Purchase confirmed" message
+      //
+      // Also return a listing-wide lock (paymentLock) to show other users "Reserved"
+      // without leaking buyer identity.
+      let myEscrow = null;
+      let myPurchase = null;
+
+      if (uid) {
+        const [esc, pur] = await Promise.all([
+          prisma.escrowTransaction.findFirst({
+            where: {
+              listingId: id,
+              buyerId: uid,
+              status: { in: ["INITIATED", "FEE_PAID", "FULLY_PAID"] },
+            },
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              status: true,
+              provider: true,
+              providerRef: true,
+              createdAt: true,
+              fundedAt: true,
+              priceCents: true,
+              feeCents: true,
+              totalChargeCents: true,
+            },
+          }),
+          prisma.purchase.findFirst({
+            where: { listingId: id, buyerId: uid },
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              amount: true,
+              createdAt: true,
+              stripeSessionId: true,
+            },
+          }),
+        ]);
+
+        myEscrow = esc || null;
+        myPurchase = pur || null;
+      }
+
+      const paymentLock = await prisma.escrowTransaction.findFirst({
+        where: {
+          listingId: id,
+          status: { in: ["FEE_PAID", "FULLY_PAID"] },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true, createdAt: true, fundedAt: true },
+      });
+
+      safeListing.myEscrow = myEscrow;
+      safeListing.myPurchase = myPurchase;
+      safeListing.paymentLock = paymentLock || null;
 
       return send(res, 200, { listing: safeListing });
     }
