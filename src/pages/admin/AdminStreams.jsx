@@ -310,169 +310,199 @@ export default function AdminStreams() {
 
       {/* Create/Edit dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[720px] border-border/60 bg-card/80 backdrop-blur">
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit stream" : "New stream"}</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          className={[
+            "p-0 border-border/60 bg-card/95 backdrop-blur",
+            "w-[calc(100vw-1.5rem)] sm:w-auto sm:max-w-[720px]",
+            "max-h-[90vh] overflow-hidden",
+          ].join(" ")}
+        >
+          <div className="flex max-h-[90vh] flex-col">
+            <DialogHeader className="px-5 sm:px-6 pt-5 sm:pt-6">
+              <DialogTitle>{editing ? "Edit stream" : "New stream"}</DialogTitle>
+            </DialogHeader>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-4">
-              <div>
-                <Label>Title *</Label>
-                <Input
-                  value={form.title}
-                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  placeholder="Short title"
-                  disabled={saving}
-                />
-              </div>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 pb-6 pt-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-4">
+                  <div>
+                    <Label>Title *</Label>
+                    <Input
+                      value={form.title}
+                      onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                      placeholder="Short title"
+                      disabled={saving}
+                    />
+                  </div>
 
-              <div>
-                <Label>Caption (optional)</Label>
-                <Textarea
-                  rows={4}
-                  value={form.caption}
-                  onChange={(e) => setForm((f) => ({ ...f, caption: e.target.value }))}
-                  placeholder="Optional description"
-                  disabled={saving}
-                />
-              </div>
+                  <div>
+                    <Label>Caption (optional)</Label>
+                    <Textarea
+                      rows={4}
+                      value={form.caption}
+                      onChange={(e) => setForm((f) => ({ ...f, caption: e.target.value }))}
+                      placeholder="Optional description"
+                      disabled={saving}
+                    />
+                  </div>
 
-              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/10 p-3">
-                <div>
-                  <div className="text-sm font-medium">Active</div>
-                  <div className="text-xs text-muted-foreground">If disabled, it won’t show to the public.</div>
+                  <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/10 p-3">
+                    <div>
+                      <div className="text-sm font-medium">Active</div>
+                      <div className="text-xs text-muted-foreground">
+                        If disabled, it won’t show to the public.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={Boolean(form.isActive)}
+                      onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))}
+                      disabled={saving}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Views (admin override)</Label>
+                    <Input
+                      inputMode="numeric"
+                      value={form.viewsCount}
+                      onChange={(e) => setForm((f) => ({ ...f, viewsCount: e.target.value }))}
+                      placeholder="0"
+                      disabled={saving}
+                    />
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      You can manually set views. Public views will also accumulate.
+                    </div>
+                  </div>
                 </div>
-                <Switch
-                  checked={Boolean(form.isActive)}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))}
-                  disabled={saving}
-                />
-              </div>
 
-              <div>
-                <Label>Views (admin override)</Label>
-                <Input
-                  inputMode="numeric"
-                  value={form.viewsCount}
-                  onChange={(e) => setForm((f) => ({ ...f, viewsCount: e.target.value }))}
-                  placeholder="0"
-                  disabled={saving}
-                />
-                <div className="mt-1 text-xs text-muted-foreground">
-                  You can manually set views. Public views will also accumulate.
+                <div className="space-y-4">
+                  {/* Cover */}
+                  <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Cover image *</div>
+                        <div className="text-xs text-muted-foreground">Used for image thumbnail.</div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        disabled={uploadingCover || saving}
+                        onClick={() => coverInputRef.current?.click()}
+                      >
+                        {uploadingCover ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <UploadCloud className="h-4 w-4" />
+                        )}
+                        Upload
+                      </Button>
+
+                      <input
+                        ref={coverInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingCover || saving}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          await onUploadCoverFile(f);
+                        }}
+                      />
+                    </div>
+
+                    <div className="mt-3">
+                      {form.coverImageUrl ? (
+                        <div className="overflow-hidden rounded-xl border border-border/60 bg-background aspect-[9/16] w-full max-w-[260px]">
+                          <img
+                            src={form.coverImageUrl}
+                            alt="Cover preview"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">No cover uploaded yet.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Video */}
+                  <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Video *</div>
+                        <div className="text-xs text-muted-foreground">Upload a short mp4/mov.</div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        disabled={uploadingVideo || saving}
+                        onClick={() => videoInputRef.current?.click()}
+                      >
+                        {uploadingVideo ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <UploadCloud className="h-4 w-4" />
+                        )}
+                        Upload
+                      </Button>
+
+                      <input
+                        ref={videoInputRef}
+                        type="file"
+                        accept="video/*"
+                        className="hidden"
+                        disabled={uploadingVideo || saving}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          await onUploadVideoFile(f);
+                        }}
+                      />
+                    </div>
+
+                    <div className="mt-3">
+                      {form.videoUrl ? (
+                        <div className="overflow-hidden rounded-xl border border-border/60 bg-black aspect-[9/16] w-full max-w-[260px]">
+                          <video
+                            src={form.videoUrl}
+                            className="h-full w-full object-cover"
+                            controls
+                            playsInline
+                            muted
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">No video uploaded yet.</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4">
-              {/* Cover */}
-              <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">Cover image *</div>
-                    <div className="text-xs text-muted-foreground">Used for image thumbnail.</div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="gap-2"
-                    disabled={uploadingCover || saving}
-                    onClick={() => coverInputRef.current?.click()}
-                  >
-                    {uploadingCover ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <UploadCloud className="h-4 w-4" />
-                    )}
-                    Upload
-                  </Button>
-
-                  <input
-                    ref={coverInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={uploadingCover || saving}
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = ""; // allow same file re-select
-                      await onUploadCoverFile(f);
-                    }}
-                  />
-                </div>
-
-                <div className="mt-3">
-                  {form.coverImageUrl ? (
-                    <div className="overflow-hidden rounded-xl border border-border/60 bg-background aspect-[9/16] max-w-[220px]">
-                      <img src={form.coverImageUrl} alt="Cover preview" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground">No cover uploaded yet.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Video */}
-              <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">Video *</div>
-                    <div className="text-xs text-muted-foreground">Upload a short mp4/mov.</div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="gap-2"
-                    disabled={uploadingVideo || saving}
-                    onClick={() => videoInputRef.current?.click()}
-                  >
-                    {uploadingVideo ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <UploadCloud className="h-4 w-4" />
-                    )}
-                    Upload
-                  </Button>
-
-                  <input
-                    ref={videoInputRef}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    disabled={uploadingVideo || saving}
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = ""; // allow same file re-select
-                      await onUploadVideoFile(f);
-                    }}
-                  />
-                </div>
-
-                <div className="mt-3">
-                  {form.videoUrl ? (
-                    <div className="overflow-hidden rounded-xl border border-border/60 bg-black aspect-[9/16] max-w-[220px]">
-                      <video src={form.videoUrl} className="h-full w-full object-cover" controls playsInline muted />
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground">No video uploaded yet.</div>
-                  )}
-                </div>
+            {/* Sticky footer */}
+            <div className="border-t border-border/60 bg-card/95 px-5 sm:px-6 py-4">
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setOpen(false)}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" className="w-full" onClick={save} disabled={!canSave}>
+                  {saving ? "Saving..." : editing ? "Save changes" : "Create stream"}
+                </Button>
               </div>
             </div>
-          </div>
-
-          <Separator className="bg-border/60" />
-
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" className="w-full" onClick={() => setOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="button" className="w-full" onClick={save} disabled={!canSave}>
-              {saving ? "Saving..." : editing ? "Save changes" : "Create stream"}
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
