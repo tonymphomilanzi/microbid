@@ -108,10 +108,7 @@ export default function StreamWatch() {
             {/* Side panel */}
             <Card className="border-border/60 bg-card/60 h-fit">
               <CardContent className="p-5 space-y-3">
-                <div className="text-sm font-semibold">Details</div>
-                <div className="text-sm text-muted-foreground">
-                  Views are counted when a viewer opens this page (unique per device/user).
-                </div>
+                
 
                 <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
                   <div className="text-xs text-muted-foreground">Created</div>

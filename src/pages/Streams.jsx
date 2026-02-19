@@ -63,7 +63,7 @@ export default function Streams() {
         <div className="flex items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Streams</h1>
-            <p className="text-sm text-muted-foreground">Short videos from our team.</p>
+            <p className="text-sm text-muted-foreground"></p>
           </div>
           <Badge variant="outline" className="border-border/60 bg-muted/20">
             Public
