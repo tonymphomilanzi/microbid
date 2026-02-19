@@ -149,7 +149,7 @@ export default function App() {
           <Route path="escrows" element={<AdminEscrows />} />
 
           {/* Later: CMS admin page editor */}
-          {/* <Route path="pages" element={<AdminPages />} /> */}
+           <Route path="pages" element={<AdminPages />} /> *
         </Route>
 
         {/* Optional: 404
