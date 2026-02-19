@@ -352,7 +352,7 @@ export default function AdminStreams() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">Cover image *</div>
-                    <div className="text-xs text-muted-foreground">Used for TikTok-style grid thumbnail.</div>
+                    <div className="text-xs text-muted-foreground">Used for image thumbnail.</div>
                   </div>
                   <label className="inline-flex">
                     <input
