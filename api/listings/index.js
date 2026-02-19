@@ -349,6 +349,90 @@ function applyDiscountIntPrice(priceInt, discountPercent) {
 }
 
 // -----------------------------
+// NEW: Subscription/usage helpers (monthly limits)
+// -----------------------------
+function monthKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function normalizeFeatures(features) {
+  const f = features && typeof features === "object" ? features : {};
+  const listingsPerMonth = Number(f.listingsPerMonth ?? 0);
+  const conversationsPerMonth = Number(f.conversationsPerMonth ?? 0);
+  return {
+    listingsPerMonth: Number.isFinite(listingsPerMonth) ? Math.trunc(listingsPerMonth) : 0,
+    conversationsPerMonth: Number.isFinite(conversationsPerMonth) ? Math.trunc(conversationsPerMonth) : 0,
+  };
+}
+
+/**
+ * Resolve effective plan limits:
+ * - ADMIN => unlimited
+ * - ACTIVE UserSubscription.plan => use that
+ * - else Plan by user.tier
+ * - else FREE
+ */
+async function getEffectiveFeaturesForUser(tx, userId, userTier, userRole) {
+  if (userRole === "ADMIN") {
+    return { listingsPerMonth: -1, conversationsPerMonth: -1 };
+  }
+
+  const sub = await tx.userSubscription.findUnique({
+    where: { userId },
+    include: { plan: true },
+  });
+
+  if (sub?.status === "ACTIVE" && sub.plan) {
+    return normalizeFeatures(sub.plan.features);
+  }
+
+  const tierName = String(userTier || "FREE").toUpperCase();
+  const byTier = await tx.plan.findUnique({ where: { name: tierName } });
+  if (byTier) return normalizeFeatures(byTier.features);
+
+  const free = await tx.plan.findUnique({ where: { name: "FREE" } });
+  if (free) return normalizeFeatures(free.features);
+
+  // If no plans exist, safest is block creation (0)
+  return { listingsPerMonth: 0, conversationsPerMonth: 0 };
+}
+
+async function ensureUsageRow(tx, userId, mk) {
+  await tx.usageMonth.upsert({
+    where: { userId_monthKey: { userId, monthKey: mk } },
+    create: { userId, monthKey: mk },
+    update: {},
+  });
+}
+
+async function incrementListingsCreatedIfAllowedOrThrow(tx, userId, mk, limit) {
+  // unlimited if < 0
+  if (typeof limit === "number" && limit < 0) return;
+
+  if (!Number.isFinite(limit) || limit <= 0) {
+    const err = new Error("Monthly listing limit reached. Upgrade to create more listings.");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  await ensureUsageRow(tx, userId, mk);
+
+  // Atomic: increment only if below limit
+  const updated = await tx.usageMonth.updateMany({
+    where: { userId, monthKey: mk, listingsCreated: { lt: limit } },
+    data: { listingsCreated: { increment: 1 } },
+  });
+
+  if (updated.count === 0) {
+    const err = new Error("Monthly listing limit reached. Upgrade to create more listings.");
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
+// -----------------------------
 // Handler
 // -----------------------------
 export default async function handler(req, res) {
@@ -1153,7 +1237,7 @@ export default async function handler(req, res) {
         where: { id: decoded.uid },
         update: { email: decoded.email ?? "unknown" },
         create: { id: decoded.uid, email: decoded.email ?? "unknown" },
-        select: { id: true, role: true },
+        select: { id: true, role: true, tier: true }, // ✅ include tier for plan fallback
       });
 
       // Category lookup (also used for streaming kit detection)
@@ -1196,6 +1280,9 @@ export default async function handler(req, res) {
       const finalImages = cleanImageList([cover, ...extraImages]).slice(0, 6);
       if (finalImages.length === 0) return send(res, 400, { message: "Missing images" });
 
+      // -------------------------
+      // EDIT listing (no usage)
+      // -------------------------
       if (id) {
         const updated = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `listing:update:${id}`);
@@ -1253,38 +1340,55 @@ export default async function handler(req, res) {
         return send(res, 200, { listing: updated });
       }
 
-      const created = await prisma.listing.create({
-        data: {
-          title,
-          platform: finalPlatform,
-          categoryId: categoryToSet,
-          price: Math.trunc(numericPrice),
+      // -------------------------
+      // CREATE listing (consume monthly limit)
+      // -------------------------
+      const created = await prisma.$transaction(async (tx) => {
+        const mk = monthKey();
 
-          income: isStreamingKit ? null : numericIncome ?? null,
-          expense: isStreamingKit ? null : numericExpense ?? null,
-          metrics: isStreamingKit ? null : metrics ?? null,
+        // lock around usage+create to reduce races
+        await advisoryLock(tx, `usage:listings:${decoded.uid}:${mk}`);
 
-          // ✅ NEW
-          discountPercent: isStreamingKit ? (dp === undefined ? null : dp) : null,
+        const features = await getEffectiveFeaturesForUser(tx, decoded.uid, dbUser.tier, dbUser.role);
 
-          description,
-          image: finalImages[0],
-          images: finalImages,
-          sellerId: decoded.uid,
-        },
-        include: {
-          seller: {
-            select: {
-              id: true,
-              username: true,
-              avatarUrl: true,
-              lastActiveAt: true,
-              isVerified: true,
-              tier: true,
-            },
+        // ADMIN unlimited; otherwise enforce and increment usage
+        if (dbUser.role !== "ADMIN") {
+          await incrementListingsCreatedIfAllowedOrThrow(tx, decoded.uid, mk, features.listingsPerMonth);
+        }
+
+        return tx.listing.create({
+          data: {
+            title,
+            platform: finalPlatform,
+            categoryId: categoryToSet,
+            price: Math.trunc(numericPrice),
+
+            income: isStreamingKit ? null : numericIncome ?? null,
+            expense: isStreamingKit ? null : numericExpense ?? null,
+            metrics: isStreamingKit ? null : metrics ?? null,
+
+            // ✅ NEW
+            discountPercent: isStreamingKit ? (dp === undefined ? null : dp) : null,
+
+            description,
+            image: finalImages[0],
+            images: finalImages,
+            sellerId: decoded.uid,
           },
-          category: true,
-        },
+          include: {
+            seller: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+                lastActiveAt: true,
+                isVerified: true,
+                tier: true,
+              },
+            },
+            category: true,
+          },
+        });
       });
 
       return send(res, 201, { listing: created });

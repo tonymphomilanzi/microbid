@@ -47,6 +47,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEscrows from "./pages/admin/AdminEscrows";
 import AdminStreams from "./pages/admin/AdminStreams";
 import AdminPages from "./pages/admin/AdminPages"; // NEW
+import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 
 export default function App() {
   usePresencePing();
@@ -148,6 +149,8 @@ export default function App() {
           <Route path="streams" element={<AdminStreams />} /> {/*  FIXED */}
           <Route path="settings" element={<AdminSettings />} />
           <Route path="escrows" element={<AdminEscrows />} />
+          <Route path="subscriptions" element={<AdminSubscriptions />} />
+
 
           {/* Later: CMS admin page editor */}
            <Route path="pages" element={<AdminPages />} /> *

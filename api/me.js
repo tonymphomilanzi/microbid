@@ -134,6 +134,41 @@ function requireNotificationModel() {
   return prisma.notification;
 }
 
+// -----------------------------
+// Plans helpers (NEW)
+// -----------------------------
+function normalizeFeatures(features) {
+  const f = features && typeof features === "object" ? features : {};
+  const listingsPerMonth = Number(f.listingsPerMonth ?? 0);
+  const conversationsPerMonth = Number(f.conversationsPerMonth ?? 0);
+
+  return {
+    listingsPerMonth: Number.isFinite(listingsPerMonth) ? Math.trunc(listingsPerMonth) : 0,
+    conversationsPerMonth: Number.isFinite(conversationsPerMonth) ? Math.trunc(conversationsPerMonth) : 0,
+  };
+}
+
+function adminVirtualPlan() {
+  return {
+    id: "ADMIN",
+    name: "ADMIN",
+    billingType: "FREE",
+    monthlyPriceCents: 0,
+    oneTimePriceCents: 0,
+    features: { listingsPerMonth: -1, conversationsPerMonth: -1 }, // unlimited
+    tagline: "Unlimited",
+    highlight: true,
+    order: -1,
+    isActive: true,
+    createdAt: new Date(),
+  };
+}
+
+function withNormalizedFeatures(plan) {
+  if (!plan) return null;
+  return { ...plan, features: normalizeFeatures(plan.features) };
+}
+
 export default async function handler(req, res) {
   try {
     // PUBLIC: username availability check
@@ -178,10 +213,12 @@ export default async function handler(req, res) {
 
     // PUBLIC: plans list
     if (req.method === "GET" && q1(req.query?.public) === "plans") {
-      const plans = await prisma.plan.findMany({
+      const plansRaw = await prisma.plan.findMany({
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
       });
+
+      const plans = plansRaw.map((p) => withNormalizedFeatures(p));
       return res.status(200).json({ plans });
     }
 
@@ -275,7 +312,6 @@ export default async function handler(req, res) {
     // -----------------------------
     // AUTH: Notifications list
     // GET /api/me?public=notifications&cursor=...
-    // cursor is an ISO date string of createdAt (pagination)
     // -----------------------------
     if (req.method === "GET" && q1(req.query?.public) === "notifications") {
       const cursorRaw = String(q1(req.query?.cursor) || "").trim();
@@ -334,18 +370,35 @@ export default async function handler(req, res) {
             orderBy: { createdAt: "desc" },
             take: 1,
           },
+
+          // NEW: include subscription->plan so we can resolve limits correctly
+          subscription: {
+            include: { plan: true },
+          },
         },
       });
 
-      const plans = await prisma.plan.findMany({
+      const plansRaw = await prisma.plan.findMany({
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
       });
 
-      const currentPlan =
-        plans.find((plan) => plan.name === user.tier) ||
-        plans.find((plan) => plan.name === "FREE") ||
-        null;
+      const plans = plansRaw.map((p) => withNormalizedFeatures(p));
+
+      // NEW: resolve currentPlan (ADMIN unlimited -> subscription plan -> tier plan -> FREE)
+      let currentPlan = null;
+
+      if (user.role === "ADMIN") {
+        currentPlan = adminVirtualPlan();
+      } else if (user.subscription?.plan && user.subscription.status === "ACTIVE") {
+        currentPlan = withNormalizedFeatures(user.subscription.plan);
+      } else {
+        const tierName = String(user.tier || "FREE").toUpperCase();
+        currentPlan =
+          plans.find((p) => p.name === tierName) ||
+          plans.find((p) => p.name === "FREE") ||
+          null;
+      }
 
       const mk = monthKey();
       const usage = await prisma.usageMonth.upsert({
@@ -366,7 +419,7 @@ export default async function handler(req, res) {
         currentPlan,
         usage,
         pendingUpgradeRequest,
-        unreadNotificationsCount, // ✅ new
+        unreadNotificationsCount,
       });
     }
 

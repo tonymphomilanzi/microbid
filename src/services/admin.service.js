@@ -52,4 +52,9 @@ verifyEscrowPayment: (id) =>
   createPage: (payload) => api.post("/admin/pages", payload).then((r) => r.data),
   updatePage: (id, payload) => api.patch("/admin/pages", payload, { params: { id } }).then((r) => r.data),
   deletePage: (id) => api.delete("/admin/pages", { params: { id } }).then((r) => r.data),
+
+    // Plans (Subscriptions)
+  getPlans: () => api.get("/admin/plans").then((r) => r.data),
+  updatePlan: (id, payload) =>
+    api.patch("/admin/plans", payload, { params: { id } }).then((r) => r.data),
 };

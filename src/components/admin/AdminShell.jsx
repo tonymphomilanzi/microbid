@@ -24,6 +24,7 @@ const nav = [
   { to: "/admin/feed", label: "Feed", Icon: NewspaperIcon },
   { to: "/admin/streams", label: "Streams", Icon: VideoCameraIcon },
   { to: "/admin/pages", label: "Pages", Icon: ListBulletIcon }, // or any icon you prefer
+  { to: "/admin/subscriptions", label: "Subscriptions", Icon: RectangleStackIcon },
 
   //  NEW: Escrows queue
   { to: "/admin/escrows", label: "Escrows", Icon: ShieldCheckIcon },
