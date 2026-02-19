@@ -92,8 +92,8 @@ export default function Streams() {
           </Card>
         ) : (
           <>
-            {/* TikTok-style grid */}
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+            {/*  grid */}
+            <div className="grid gap-2 grid-cols-3 sm:grid-cols-3 lg:grid-cols-4">
               {streams.map((s) => (
                 <Link key={s.id} to={`/streams/${s.id}`} className="group">
                   <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-muted/10 aspect-[9/16]">

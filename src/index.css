@@ -4,6 +4,53 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ---------------------------------------
+   Universal scrollbar styling (theme-aware)
+   Uses shadcn CSS vars: --muted, --border, --primary, etc.
+   --------------------------------------- */
+
+/* Avoid layout shift when scrollbars appear/disappear */
+html {
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin; /* "auto" | "thin" */
+  scrollbar-color: hsl(var(--muted-foreground) / 0.45) transparent;
+}
+
+/* WebKit (Chrome, Edge, Safari) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 9999px;
+  border: 2px solid transparent;       /* creates “padding” */
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.55);
+}
+
+/* Optional: subtle accent ring when actively dragging */
+*::-webkit-scrollbar-thumb:active {
+  background: hsl(var(--primary) / 0.6);
+}
+
+/* Corner where horizontal & vertical meet */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Geist Sans */
 @font-face {
   font-family: "Geist Sans";

@@ -9,55 +9,51 @@ import {
   UserCircleIcon,
   NewspaperIcon,
   ChatBubbleLeftRightIcon,
-  PlayCircleIcon, //  NEW
+  PlayCircleIcon,
 } from "@heroicons/react/24/outline";
 
 export default function Navbar() {
-  const { user, authLoading, openAuthModal, unreadChats, unreadFeed, unreadNotifications, isAdmin } = useAuth();
+  const { user, authLoading, openAuthModal, unreadChats, unreadFeed, unreadNotifications, isAdmin } =
+    useAuth();
 
   const navigate = useNavigate();
 
+  const navItem = ({ isActive }) =>
+    [
+      "relative inline-flex items-center justify-center rounded-md text-sm transition",
+      // mobile compact
+      "h-10 w-10 px-0",
+      // desktop roomy
+      "sm:h-auto sm:w-auto sm:px-3 sm:py-2 sm:gap-2",
+      isActive ? "bg-muted font-medium" : "hover:bg-muted",
+    ].join(" ");
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span>Mikrobid</span>
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-3 sm:px-4">
+        {/* Brand */}
+        <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight shrink-0">
+          {/* hide text on mobile */}
+          <span className="hidden sm:inline">Mikrobid</span>
+          {/* optional: show a small dot/logo placeholder on mobile */}
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-muted/20 sm:hidden">
+            M
+          </span>
         </Link>
 
+        {/* Main nav */}
         <nav className="flex items-center gap-1">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                isActive ? "bg-muted font-medium" : "hover:bg-muted"
-              }`
-            }
-          >
+          <NavLink to="/" end className={navItem} aria-label="Home" title="Home">
             <HomeIcon className="h-5 w-5" />
             <span className="hidden sm:inline">Home</span>
           </NavLink>
 
-          <NavLink
-            to="/marketplace"
-            className={({ isActive }) =>
-              `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                isActive ? "bg-muted font-medium" : "hover:bg-muted"
-              }`
-            }
-          >
+          <NavLink to="/marketplace" className={navItem} aria-label="Marketplace" title="Marketplace">
             <ShoppingBagIcon className="h-5 w-5" />
             <span className="hidden sm:inline">Marketplace</span>
           </NavLink>
 
-          <NavLink
-            to="/feed"
-            className={({ isActive }) =>
-              `relative inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                isActive ? "bg-muted font-medium" : "hover:bg-muted"
-              }`
-            }
-          >
+          <NavLink to="/feed" className={navItem} aria-label="Feed" title="Feed">
             <div className="relative">
               <NewspaperIcon className="h-5 w-5" />
               {user && unreadFeed > 0 ? (
@@ -69,21 +65,14 @@ export default function Navbar() {
             <span className="hidden sm:inline">Feed</span>
           </NavLink>
 
-          {/* ✅ NEW: Streams */}
-          <NavLink
-            to="/streams"
-            className={({ isActive }) =>
-              `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                isActive ? "bg-muted font-medium" : "hover:bg-muted"
-              }`
-            }
-          >
+          <NavLink to="/streams" className={navItem} aria-label="Streams" title="Streams">
             <PlayCircleIcon className="h-5 w-5" />
             <span className="hidden sm:inline">Streams</span>
           </NavLink>
         </nav>
 
-        <div className="flex items-center gap-2">
+        {/* Right actions */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {authLoading ? (
             <div className="h-10 w-24 rounded-md bg-muted/40" />
           ) : user ? (
@@ -140,7 +129,7 @@ export default function Navbar() {
           ) : (
             <Button onClick={openAuthModal} className="gap-2">
               <ArrowRightOnRectangleIcon className="h-5 w-5" />
-              Login
+              <span className="hidden sm:inline">Login</span>
             </Button>
           )}
         </div>
