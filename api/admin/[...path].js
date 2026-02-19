@@ -50,25 +50,20 @@ export default async function handler(req, res) {
       .split("/")
       .filter(Boolean);
 
-    const resource = parts[0] || ""; // users | listings | platforms | categories | feed | settings
+    const resource = parts[0] || ""; // users | listings | platforms | categories | feed | settings | escrows | streams
     const id = parts[1] || url.searchParams.get("id") || null;
 
     // nice health response
     if (!resource) {
       return res.status(200).json({
         ok: true,
-        resources: ["users", "listings", "platforms", "categories", "feed", "settings", "escrows"],
+        resources: ["users", "listings", "platforms", "categories", "feed", "streams", "settings", "escrows"],
       });
     }
 
     // ---------------- SETTINGS (ESCROW + PAYMENT DETAILS) ----------------
     // GET    /api/admin/settings
     // PATCH  /api/admin/settings
-    //
-    // Stores the values you previously kept in env vars:
-    // - escrowAgentUid (ESCROW_AGENT_UID)
-    // - escrowFeeBps (2% default = 200)
-    // - BTC/MOMO/WU/BANK deposit details
     if (resource === "settings") {
       if (req.method === "GET") {
         const settings = await getOrCreateGlobalConfig();
@@ -77,7 +72,6 @@ export default async function handler(req, res) {
 
       if (req.method === "PATCH") {
         const body = readJson(req);
-        // allow { settings: {...} } or flat body
         const s = body.settings && typeof body.settings === "object" ? body.settings : body;
 
         const escrowFeeBps = intOrUndefined(s.escrowFeeBps);
@@ -89,11 +83,12 @@ export default async function handler(req, res) {
           where: { id: "global" },
           create: {
             id: "global",
-           escrowAgentUid: "SYSTEM",
+            escrowAgentUid: "SYSTEM",
             escrowFeeBps: escrowFeeBps ?? 200,
 
             companyBtcAddress: strOrNullOrUndefined(s.companyBtcAddress) ?? null,
             companyBtcNetwork: strOrNullOrUndefined(s.companyBtcNetwork) ?? null,
+            companyBtcQrUrl: strOrNullOrUndefined(s.companyBtcQrUrl) ?? null, // ✅ NEW
 
             companyMomoName: strOrNullOrUndefined(s.companyMomoName) ?? null,
             companyMomoNumber: strOrNullOrUndefined(s.companyMomoNumber) ?? null,
@@ -110,12 +105,12 @@ export default async function handler(req, res) {
             companyBankCountry: strOrNullOrUndefined(s.companyBankCountry) ?? null,
           },
           update: {
-            //escrowAgentUid: strOrNullOrUndefined(s.escrowAgentUid),
             escrowAgentUid: "SYSTEM",
             escrowFeeBps,
 
             companyBtcAddress: strOrNullOrUndefined(s.companyBtcAddress),
             companyBtcNetwork: strOrNullOrUndefined(s.companyBtcNetwork),
+            companyBtcQrUrl: strOrNullOrUndefined(s.companyBtcQrUrl), // ✅ NEW
 
             companyMomoName: strOrNullOrUndefined(s.companyMomoName),
             companyMomoNumber: strOrNullOrUndefined(s.companyMomoNumber),
@@ -137,6 +132,127 @@ export default async function handler(req, res) {
       }
 
       res.setHeader("Allow", "GET, PATCH");
+      return res.status(405).json({ message: "Method not allowed" });
+    }
+
+    // ---------------- STREAMS (Short videos) ----------------
+    // GET    /api/admin/streams
+    // POST   /api/admin/streams
+    // PATCH  /api/admin/streams/:id
+    // DELETE /api/admin/streams/:id
+    if (resource === "streams") {
+      if (req.method === "GET") {
+        const status = (url.searchParams.get("status") || "").toUpperCase(); // ACTIVE | INACTIVE | ""
+        const q = (url.searchParams.get("q") || "").trim();
+
+        const where = {
+          ...(status === "ACTIVE" ? { isActive: true } : {}),
+          ...(status === "INACTIVE" ? { isActive: false } : {}),
+          ...(q
+            ? {
+                OR: [
+                  { title: { contains: q, mode: "insensitive" } },
+                  { caption: { contains: q, mode: "insensitive" } },
+                  { id: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        };
+
+        const streams = await prisma.streamVideo.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: 300,
+          select: {
+            id: true,
+            title: true,
+            caption: true,
+            coverImageUrl: true,
+            videoUrl: true,
+            viewsCount: true,
+            isActive: true,
+            createdAt: true,
+            updatedAt: true,
+            createdById: true,
+          },
+        });
+
+        return res.status(200).json({ streams });
+      }
+
+      if (req.method === "POST") {
+        const body = readJson(req);
+
+        const title = String(body.title || "").trim();
+        const caption = body.caption ? String(body.caption).trim() : null;
+        const coverImageUrl = String(body.coverImageUrl || "").trim();
+        const videoUrl = String(body.videoUrl || "").trim();
+        const isActive = body.isActive === undefined ? true : Boolean(body.isActive);
+
+        const viewsCountRaw = body.viewsCount;
+        const viewsCount =
+          viewsCountRaw === undefined || viewsCountRaw === null || viewsCountRaw === ""
+            ? 0
+            : Math.trunc(Number(viewsCountRaw));
+
+        if (!title) return res.status(400).json({ message: "Missing title" });
+        if (!coverImageUrl) return res.status(400).json({ message: "Missing coverImageUrl" });
+        if (!videoUrl) return res.status(400).json({ message: "Missing videoUrl" });
+        if (!Number.isFinite(viewsCount) || viewsCount < 0) {
+          return res.status(400).json({ message: "viewsCount must be a non-negative integer" });
+        }
+
+        const created = await prisma.streamVideo.create({
+          data: {
+            title,
+            caption,
+            coverImageUrl,
+            videoUrl,
+            isActive,
+            viewsCount,
+            createdById: adminUid,
+          },
+        });
+
+        return res.status(201).json({ stream: created });
+      }
+
+      if (req.method === "PATCH") {
+        if (!id) return res.status(400).json({ message: "Missing stream id" });
+        const body = readJson(req);
+
+        const data = {};
+
+        if (body.title !== undefined) data.title = String(body.title || "").trim();
+        if (body.caption !== undefined) data.caption = body.caption ? String(body.caption).trim() : null;
+        if (body.coverImageUrl !== undefined) data.coverImageUrl = String(body.coverImageUrl || "").trim();
+        if (body.videoUrl !== undefined) data.videoUrl = String(body.videoUrl || "").trim();
+        if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
+
+        if (body.viewsCount !== undefined) {
+          const v = Math.trunc(Number(body.viewsCount));
+          if (!Number.isFinite(v) || v < 0) {
+            return res.status(400).json({ message: "viewsCount must be a non-negative integer" });
+          }
+          data.viewsCount = v;
+        }
+
+        const stream = await prisma.streamVideo.update({
+          where: { id },
+          data,
+        });
+
+        return res.status(200).json({ stream });
+      }
+
+      if (req.method === "DELETE") {
+        if (!id) return res.status(400).json({ message: "Missing stream id" });
+
+        await prisma.streamVideo.delete({ where: { id } });
+        return res.status(200).json({ ok: true });
+      }
+
+      res.setHeader("Allow", "GET, POST, PATCH, DELETE");
       return res.status(405).json({ message: "Method not allowed" });
     }
 
@@ -463,175 +579,161 @@ export default async function handler(req, res) {
       return res.status(405).json({ message: "Method not allowed" });
     }
 
+    // ---------------- ESCROWS ----------------
+    if (resource === "escrows") {
+      if (req.method === "GET") {
+        const status = url.searchParams.get("status") || "";
+        const q = (url.searchParams.get("q") || "").trim();
 
-    // ---------------- ESCROWS (manual payments moderation) ----------------
-// GET  /api/admin/escrows?status=FEE_PAID&q=...
-// PATCH /api/admin/escrows?id=<escrowId>  body: { intent: "verifyPayment" }
-if (resource === "escrows") {
-  if (req.method === "GET") {
-    const status = url.searchParams.get("status") || "";
-    const q = (url.searchParams.get("q") || "").trim();
+        const escrows = await prisma.escrowTransaction.findMany({
+          where: {
+            ...(status ? { status } : {}),
+            ...(q
+              ? {
+                  OR: [
+                    { id: { contains: q, mode: "insensitive" } },
+                    { listing: { title: { contains: q, mode: "insensitive" } } },
+                    { buyerId: { contains: q, mode: "insensitive" } },
+                    { sellerId: { contains: q, mode: "insensitive" } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+          include: {
+            listing: { select: { id: true, title: true, price: true, status: true, platform: true } },
+            proofs: { orderBy: { createdAt: "desc" } },
+          },
+        });
 
-    const escrows = await prisma.escrowTransaction.findMany({
-      where: {
-        ...(status ? { status } : {}),
-        ...(q
-          ? {
-              OR: [
-                { id: { contains: q, mode: "insensitive" } },
-                { listing: { title: { contains: q, mode: "insensitive" } } },
-                { buyerId: { contains: q, mode: "insensitive" } },
-                { sellerId: { contains: q, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      include: {
-        listing: { select: { id: true, title: true, price: true, status: true, platform: true } },
-        proofs: { orderBy: { createdAt: "desc" } },
-      },
-    });
-
-    return res.status(200).json({ escrows });
-  }
-
-  
-
-  if (req.method === "PATCH") {
-    if (!id) return res.status(400).json({ message: "Missing escrow id" });
-    const body = readJson(req);
-
-    if (body.intent !== "verifyPayment") {
-      return res.status(400).json({ message: "Unsupported intent" });
-    }
-
-    const out = await prisma.$transaction(async (tx) => {
-      // lock to make idempotent & race-safe
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`escrow:verify:${id}`}, 0))`;
-
-      const escrow = await tx.escrowTransaction.findUnique({
-        where: { id },
-        include: { listing: true },
-      });
-
-      if (!escrow) {
-        const err = new Error("Escrow not found");
-        err.statusCode = 404;
-        throw err;
+        return res.status(200).json({ escrows });
       }
 
-      // Must be paid-submitted to verify
-      if (!["FEE_PAID", "FULLY_PAID"].includes(escrow.status)) {
-        const err = new Error(`Escrow is not ready for verification (status ${escrow.status})`);
-        err.statusCode = 400;
-        throw err;
-      }
+      if (req.method === "PATCH") {
+        if (!id) return res.status(400).json({ message: "Missing escrow id" });
+        const body = readJson(req);
 
-      // If already sold, keep idempotent
-      const existingPurchase = await tx.purchase.findFirst({
-        where: { listingId: escrow.listingId },
-        orderBy: { createdAt: "desc" },
-      });
+        if (body.intent !== "verifyPayment") {
+          return res.status(400).json({ message: "Unsupported intent" });
+        }
 
-      const alreadyVerified = escrow.status === "FULLY_PAID";
-      const canNotify = Boolean(tx.notification);
+        const out = await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`escrow:verify:${id}`}, 0))`;
 
-      const updatedEscrow =
-        escrow.status === "FULLY_PAID"
-          ? escrow
-          : await tx.escrowTransaction.update({
-              where: { id },
-              data: { status: "FULLY_PAID", fundedAt: new Date() },
+          const escrow = await tx.escrowTransaction.findUnique({
+            where: { id },
+            include: { listing: true },
+          });
+
+          if (!escrow) {
+            const err = new Error("Escrow not found");
+            err.statusCode = 404;
+            throw err;
+          }
+
+          if (!["FEE_PAID", "FULLY_PAID"].includes(escrow.status)) {
+            const err = new Error(`Escrow is not ready for verification (status ${escrow.status})`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          const existingPurchase = await tx.purchase.findFirst({
+            where: { listingId: escrow.listingId },
+            orderBy: { createdAt: "desc" },
+          });
+
+          const alreadyVerified = escrow.status === "FULLY_PAID";
+          const canNotify = Boolean(tx.notification);
+
+          const updatedEscrow =
+            escrow.status === "FULLY_PAID"
+              ? escrow
+              : await tx.escrowTransaction.update({
+                  where: { id },
+                  data: { status: "FULLY_PAID", fundedAt: new Date() },
+                });
+
+          await tx.listing.update({
+            where: { id: escrow.listingId },
+            data: { status: "SOLD" },
+          });
+
+          const purchase =
+            existingPurchase ||
+            (await tx.purchase.create({
+              data: {
+                listingId: escrow.listingId,
+                buyerId: escrow.buyerId,
+                sellerId: escrow.sellerId,
+                amount: Math.trunc(Number(escrow.priceCents || 0) / 100),
+                stripeSessionId: `MANUAL:${escrow.id}`,
+              },
+            }));
+
+          if (!alreadyVerified && canNotify) {
+            const listingTitle = escrow.listing?.title || "a listing";
+            const listingUrl = `/listings/${escrow.listingId}`;
+            const amountUsd = Math.trunc(Number(escrow.priceCents || 0) / 100);
+
+            await tx.notification.create({
+              data: {
+                userId: escrow.buyerId,
+                type: "PURCHASE_CREATED",
+                title: "Purchase confirmed",
+                body: `Your purchase for "${listingTitle}" is confirmed.`,
+                url: listingUrl,
+                meta: {
+                  escrowId: escrow.id,
+                  listingId: escrow.listingId,
+                  purchaseId: purchase.id,
+                  amount: amountUsd,
+                },
+              },
             });
 
-      // Mark listing SOLD (prevents any future purchase)
-      await tx.listing.update({
-        where: { id: escrow.listingId },
-        data: { status: "SOLD" },
-      });
+            await tx.notification.create({
+              data: {
+                userId: escrow.sellerId,
+                type: "SALE_CONFIRMED",
+                title: "Sale confirmed",
+                body: `Buyer payment has been verified for "${listingTitle}". Prepare to transfer ownership.`,
+                url: listingUrl,
+                meta: {
+                  escrowId: escrow.id,
+                  listingId: escrow.listingId,
+                  purchaseId: purchase.id,
+                  amount: amountUsd,
+                },
+              },
+            });
 
-      const purchase =
-        existingPurchase ||
-        (await tx.purchase.create({
-          data: {
-            listingId: escrow.listingId,
-            buyerId: escrow.buyerId,
-            sellerId: escrow.sellerId,
-            amount: Math.trunc(Number(escrow.priceCents || 0) / 100),
-            stripeSessionId: `MANUAL:${escrow.id}`, // reuse field to tag manual purchase
-          },
-        }));
+            await tx.notification.create({
+              data: {
+                userId: escrow.sellerId,
+                type: "SALE_MADE",
+                title: "You made a sale",
+                body: `You sold "${listingTitle}".`,
+                url: listingUrl,
+                meta: {
+                  escrowId: escrow.id,
+                  listingId: escrow.listingId,
+                  purchaseId: purchase.id,
+                  amount: amountUsd,
+                },
+              },
+            });
+          }
 
-     // Send notifications ONLY once (avoid spamming on repeated PATCH)
+          return { escrow: updatedEscrow, purchase };
+        });
 
-if (!alreadyVerified && canNotify) {
-  const listingTitle = escrow.listing?.title || "a listing";
-  const listingUrl = `/listings/${escrow.listingId}`;
-  const amountUsd = Math.trunc(Number(escrow.priceCents || 0) / 100);
+        return res.status(200).json(out);
+      }
 
-  // Buyer: purchase created
-  await tx.notification.create({
-    data: {
-      userId: escrow.buyerId,
-      type: "PURCHASE_CREATED",
-      title: "Purchase confirmed",
-      body: `Your purchase for "${listingTitle}" is confirmed.`,
-      url: listingUrl,
-      meta: {
-        escrowId: escrow.id,
-        listingId: escrow.listingId,
-        purchaseId: purchase.id,
-        amount: amountUsd,
-      },
-    },
-  });
-
-  // Seller: sale confirmed (payment verified)
-  await tx.notification.create({
-    data: {
-      userId: escrow.sellerId,
-      type: "SALE_CONFIRMED",
-      title: "Sale confirmed",
-      body: `Buyer payment has been verified for "${listingTitle}". Prepare to transfer ownership.`,
-      url: listingUrl,
-      meta: {
-        escrowId: escrow.id,
-        listingId: escrow.listingId,
-        purchaseId: purchase.id,
-        amount: amountUsd,
-      },
-    },
-  });
-
-  // Seller: sale made (purchase record created)
-  await tx.notification.create({
-    data: {
-      userId: escrow.sellerId,
-      type: "SALE_MADE",
-      title: "You made a sale",
-      body: `You sold "${listingTitle}".`,
-      url: listingUrl,
-      meta: {
-        escrowId: escrow.id,
-        listingId: escrow.listingId,
-        purchaseId: purchase.id,
-        amount: amountUsd,
-      },
-    },
-  });
-}
-
-      return { escrow: updatedEscrow, purchase };
-    });
-
-    return res.status(200).json(out);
-  }
-
-  res.setHeader("Allow", "GET, PATCH");
-  return res.status(405).json({ message: "Method not allowed" });
-}
+      res.setHeader("Allow", "GET, PATCH");
+      return res.status(405).json({ message: "Method not allowed" });
+    }
 
     return res.status(404).json({ message: "Unknown admin resource" });
   } catch (e) {
