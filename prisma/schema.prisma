@@ -64,6 +64,8 @@ model User {
 
   notifications Notification[]
 
+   streamVideos StreamVideo[] @relation("adminStreamVideos")
+
 }
 
 
@@ -588,4 +590,41 @@ model Notification {
 
   @@index([userId, createdAt])
   @@index([userId, isRead])
+}
+
+//streamVideos
+model StreamVideo {
+  id            String   @id @default(cuid())
+  title         String
+  caption       String?
+  coverImageUrl String
+  videoUrl      String
+
+  viewsCount    Int      @default(0)
+  isActive      Boolean  @default(true)
+
+  createdById   String
+  createdBy     User     @relation("adminStreamVideos", fields: [createdById], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  views         StreamVideoView[]
+
+  @@index([createdAt])
+  @@index([isActive, createdAt])
+  @@index([createdById])
+}
+
+model StreamVideoView {
+  id        String      @id @default(cuid())
+  streamId  String
+  stream    StreamVideo @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  viewerKey String      // "u:<uid>" or "d:<deviceId>"
+  createdAt DateTime    @default(now())
+
+  @@unique([streamId, viewerKey])
+  @@index([streamId])
+  @@index([viewerKey])
 }

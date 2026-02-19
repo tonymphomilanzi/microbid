@@ -9,10 +9,11 @@ import {
   UserCircleIcon,
   NewspaperIcon,
   ChatBubbleLeftRightIcon,
+  PlayCircleIcon, //  NEW
 } from "@heroicons/react/24/outline";
 
 export default function Navbar() {
-const { user, authLoading, openAuthModal, unreadChats, unreadFeed, unreadNotifications, isAdmin } = useAuth();
+  const { user, authLoading, openAuthModal, unreadChats, unreadFeed, unreadNotifications, isAdmin } = useAuth();
 
   const navigate = useNavigate();
 
@@ -66,6 +67,19 @@ const { user, authLoading, openAuthModal, unreadChats, unreadFeed, unreadNotific
               ) : null}
             </div>
             <span className="hidden sm:inline">Feed</span>
+          </NavLink>
+
+          {/* ✅ NEW: Streams */}
+          <NavLink
+            to="/streams"
+            className={({ isActive }) =>
+              `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+                isActive ? "bg-muted font-medium" : "hover:bg-muted"
+              }`
+            }
+          >
+            <PlayCircleIcon className="h-5 w-5" />
+            <span className="hidden sm:inline">Streams</span>
           </NavLink>
         </nav>
 

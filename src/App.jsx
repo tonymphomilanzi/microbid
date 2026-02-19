@@ -27,6 +27,10 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEscrows from "./pages/admin/AdminEscrows"; // NEW
 import Notifications from "./pages/Notifications";
 
+import Streams from "./pages/Streams";
+import StreamWatch from "./pages/StreamWatch";
+import AdminStreams from "./pages/admin/AdminStreams";
+
 export default function App() {
   usePresencePing();
 
@@ -54,6 +58,11 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        
+
+<Route path="/streams" element={<Streams />} />
+<Route path="/streams/:id" element={<StreamWatch />} />
+
 
 
           {/**Notifications route */}
@@ -89,6 +98,7 @@ export default function App() {
           <Route path="platforms" element={<AdminPlatforms />} />
           <Route path="categories" element={<AdminCategories />} />
           <Route path="feed" element={<AdminFeed />} />
+          <Route path="/admin/streams" element={<AdminStreams />} />
 
           {/* IMPORTANT: child routes must be relative (no leading /) */}
           <Route path="settings" element={<AdminSettings />} />

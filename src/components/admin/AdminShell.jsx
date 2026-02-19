@@ -11,7 +11,8 @@ import {
   ArrowLeftIcon,
   NewspaperIcon,
   Cog6ToothIcon,
-  ShieldCheckIcon, // ✅ NEW
+  ShieldCheckIcon, //  NEW
+  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 
 const nav = [
@@ -21,8 +22,9 @@ const nav = [
   { to: "/admin/platforms", label: "Platforms", Icon: RectangleStackIcon },
   { to: "/admin/categories", label: "Categories", Icon: TagIcon },
   { to: "/admin/feed", label: "Feed", Icon: NewspaperIcon },
+  { to: "/admin/streams", label: "Streams", Icon: VideoCameraIcon },
 
-  // ✅ NEW: Escrows queue
+  //  NEW: Escrows queue
   { to: "/admin/escrows", label: "Escrows", Icon: ShieldCheckIcon },
 
   { to: "/admin/settings", label: "Settings", Icon: Cog6ToothIcon },
