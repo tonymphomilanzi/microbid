@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -7,12 +7,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
 import { Separator } from "../../components/ui/separator";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +32,9 @@ function formatViews(n) {
 
 export default function AdminStreams() {
   const { toast } = useToast();
+
+  const coverInputRef = useRef(null);
+  const videoInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [streams, setStreams] = useState([]);
@@ -115,29 +113,47 @@ export default function AdminStreams() {
     setOpen(true);
   }
 
-  async function onUploadCover(file) {
+  async function onUploadCoverFile(file) {
     if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file", description: "Please select an image file." });
+      return;
+    }
+
     setUploadingCover(true);
     try {
       const res = await streamsService.uploadCoverImage(file);
       if (!res?.url) throw new Error("Upload succeeded but missing url");
       setForm((f) => ({ ...f, coverImageUrl: res.url }));
     } catch (e) {
-      toast({ title: "Cover upload failed", description: e?.response?.data?.message || e.message });
+      toast({
+        title: "Cover upload failed",
+        description: e?.response?.data?.message || e.message || "Try again.",
+      });
     } finally {
       setUploadingCover(false);
     }
   }
 
-  async function onUploadVideo(file) {
+  async function onUploadVideoFile(file) {
     if (!file) return;
+
+    if (!file.type.startsWith("video/")) {
+      toast({ title: "Invalid file", description: "Please select a video file." });
+      return;
+    }
+
     setUploadingVideo(true);
     try {
       const res = await streamsService.uploadVideo(file);
       if (!res?.url) throw new Error("Upload succeeded but missing url");
       setForm((f) => ({ ...f, videoUrl: res.url }));
     } catch (e) {
-      toast({ title: "Video upload failed", description: e?.response?.data?.message || e.message });
+      toast({
+        title: "Video upload failed",
+        description: e?.response?.data?.message || e.message || "Try again.",
+      });
     } finally {
       setUploadingVideo(false);
     }
@@ -191,7 +207,10 @@ export default function AdminStreams() {
       setDeletingId(null);
       await load();
     } catch (e) {
-      toast({ title: "Delete failed", description: e?.response?.data?.message || e.message || "Try again." });
+      toast({
+        title: "Delete failed",
+        description: e?.response?.data?.message || e.message || "Try again.",
+      });
     }
   }
 
@@ -354,19 +373,34 @@ export default function AdminStreams() {
                     <div className="text-sm font-semibold">Cover image *</div>
                     <div className="text-xs text-muted-foreground">Used for image thumbnail.</div>
                   </div>
-                  <label className="inline-flex">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={uploadingCover || saving}
-                      onChange={(e) => onUploadCover(e.target.files?.[0])}
-                    />
-                    <Button type="button" variant="outline" className="gap-2" disabled={uploadingCover || saving}>
-                      {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                      Upload
-                    </Button>
-                  </label>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={uploadingCover || saving}
+                    onClick={() => coverInputRef.current?.click()}
+                  >
+                    {uploadingCover ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <UploadCloud className="h-4 w-4" />
+                    )}
+                    Upload
+                  </Button>
+
+                  <input
+                    ref={coverInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingCover || saving}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = ""; // allow same file re-select
+                      await onUploadCoverFile(f);
+                    }}
+                  />
                 </div>
 
                 <div className="mt-3">
@@ -387,19 +421,34 @@ export default function AdminStreams() {
                     <div className="text-sm font-semibold">Video *</div>
                     <div className="text-xs text-muted-foreground">Upload a short mp4/mov.</div>
                   </div>
-                  <label className="inline-flex">
-                    <input
-                      type="file"
-                      accept="video/*"
-                      className="hidden"
-                      disabled={uploadingVideo || saving}
-                      onChange={(e) => onUploadVideo(e.target.files?.[0])}
-                    />
-                    <Button type="button" variant="outline" className="gap-2" disabled={uploadingVideo || saving}>
-                      {uploadingVideo ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                      Upload
-                    </Button>
-                  </label>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={uploadingVideo || saving}
+                    onClick={() => videoInputRef.current?.click()}
+                  >
+                    {uploadingVideo ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <UploadCloud className="h-4 w-4" />
+                    )}
+                    Upload
+                  </Button>
+
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    disabled={uploadingVideo || saving}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = ""; // allow same file re-select
+                      await onUploadVideoFile(f);
+                    }}
+                  />
                 </div>
 
                 <div className="mt-3">

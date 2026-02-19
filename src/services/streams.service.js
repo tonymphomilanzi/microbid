@@ -49,17 +49,17 @@ export const streamsService = {
   // -----------------------------
   // Upload helpers (admin)
   // -----------------------------
-  uploadCoverImage: (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    return api.post("/upload", fd, withDeviceHeader()).then((r) => r.data);
-  },
+uploadCoverImage: (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.post("/upload", fd, withDeviceHeader()).then((r) => r.data);
+},
 
-  uploadVideo: (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    return api.post("/upload-video", fd, withDeviceHeader()).then((r) => r.data);
-  },
+uploadVideo: (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.post("/upload", fd, withDeviceHeader()).then((r) => r.data); //  /upload (not /upload-video)
+},
 
   // -----------------------------
   // Admin CRUD
