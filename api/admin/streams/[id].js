@@ -1,5 +1,5 @@
-import { prisma } from "../_lib/prisma.js";
-import { requireAuth } from "../_lib/auth.js";
+import { prisma } from "../../_lib/prisma.js";
+import { requireAuth } from "../../_lib/auth.js";
 
 function send(res, status, json) {
   return res.status(status).json(json);
