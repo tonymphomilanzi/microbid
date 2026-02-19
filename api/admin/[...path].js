@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     if (!resource) {
       return res.status(200).json({
         ok: true,
-        resources: ["users", "listings", "platforms", "categories", "feed", "streams", "settings", "escrows"],
+     resources: ["users", "listings", "platforms", "categories", "feed", "streams", "pages", "settings", "escrows"]
       });
     }
 
@@ -255,6 +255,128 @@ export default async function handler(req, res) {
       res.setHeader("Allow", "GET, POST, PATCH, DELETE");
       return res.status(405).json({ message: "Method not allowed" });
     }
+
+
+
+    // ---------------- PAGES (CMS) ----------------
+// GET    /api/admin/pages
+// GET    /api/admin/pages/<id>
+// POST   /api/admin/pages
+// PATCH  /api/admin/pages/<id>
+// DELETE /api/admin/pages/<id>
+if (resource === "pages") {
+  const isValidSlug = (s) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s);
+
+  if (req.method === "GET") {
+    // If id present => return one page (includes body)
+    if (id) {
+      const page = await prisma.sitePage.findUnique({
+        where: { id },
+      });
+      if (!page) return res.status(404).json({ message: "Not found" });
+      return res.status(200).json({ page });
+    }
+
+    // else list pages
+    const q = (url.searchParams.get("q") || "").trim();
+    const pages = await prisma.sitePage.findMany({
+      where: q
+        ? {
+            OR: [
+              { slug: { contains: q, mode: "insensitive" } },
+              { title: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {},
+      orderBy: { updatedAt: "desc" },
+      take: 300,
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        isPublished: true,
+        updatedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return res.status(200).json({ pages });
+  }
+
+  if (req.method === "POST") {
+    const body = readJson(req);
+
+    const slug = String(body.slug || "").trim().toLowerCase();
+    const title = String(body.title || "").trim();
+    const pageBody = body.body === undefined || body.body === null ? "" : String(body.body);
+    const isPublished = body.isPublished === undefined ? true : Boolean(body.isPublished);
+
+    if (!slug) return res.status(400).json({ message: "Missing slug" });
+    if (!isValidSlug(slug)) {
+      return res.status(400).json({ message: "Slug must be lowercase and use only letters, numbers, and hyphens." });
+    }
+    if (!title) return res.status(400).json({ message: "Missing title" });
+    if (pageBody.length > 100_000) return res.status(400).json({ message: "Body too long (max 100000 chars)" });
+
+    const created = await prisma.sitePage.create({
+      data: {
+        slug,
+        title,
+        body: pageBody,
+        isPublished,
+        updatedById: adminUid,
+      },
+    });
+
+    return res.status(201).json({ page: created });
+  }
+
+  if (req.method === "PATCH") {
+    if (!id) return res.status(400).json({ message: "Missing page id" });
+
+    const body = readJson(req);
+    const data = { updatedById: adminUid };
+
+    if (body.slug !== undefined) {
+      const slug = String(body.slug || "").trim().toLowerCase();
+      if (!slug) return res.status(400).json({ message: "slug cannot be empty" });
+      if (!isValidSlug(slug)) {
+        return res.status(400).json({ message: "Slug must be lowercase and use only letters, numbers, and hyphens." });
+      }
+      data.slug = slug;
+    }
+
+    if (body.title !== undefined) {
+      const title = String(body.title || "").trim();
+      if (!title) return res.status(400).json({ message: "title cannot be empty" });
+      data.title = title;
+    }
+
+    if (body.body !== undefined) {
+      const pageBody = body.body === null ? "" : String(body.body);
+      if (pageBody.length > 100_000) return res.status(400).json({ message: "Body too long (max 100000 chars)" });
+      data.body = pageBody;
+    }
+
+    if (body.isPublished !== undefined) data.isPublished = Boolean(body.isPublished);
+
+    const updated = await prisma.sitePage.update({
+      where: { id },
+      data,
+    });
+
+    return res.status(200).json({ page: updated });
+  }
+
+  if (req.method === "DELETE") {
+    if (!id) return res.status(400).json({ message: "Missing page id" });
+    await prisma.sitePage.delete({ where: { id } });
+    return res.status(200).json({ ok: true });
+  }
+
+  res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+  return res.status(405).json({ message: "Method not allowed" });
+}
 
     // ---------------- USERS ----------------
     if (resource === "users") {

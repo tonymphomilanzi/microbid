@@ -64,7 +64,9 @@ model User {
 
   notifications Notification[]
 
-   streamVideos StreamVideo[] @relation("adminStreamVideos")
+  streamVideos StreamVideo[] @relation("adminStreamVideos")
+
+  sitePages SitePage[]
 
 }
 
@@ -627,4 +629,21 @@ model StreamVideoView {
   @@unique([streamId, viewerKey])
   @@index([streamId])
   @@index([viewerKey])
+}
+
+
+model SitePage {
+  id          String   @id @default(cuid())
+  slug        String   @unique            // e.g. "terms", "privacy-policy"
+  title       String
+  body        String   @default("")       // store as plain text/markdown
+  isPublished Boolean  @default(true)
+
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, updatedAt])
 }

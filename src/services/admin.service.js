@@ -45,4 +45,11 @@ export const adminService = {
 getEscrows: (params) => api.get("/admin/escrows", { params }).then((r) => r.data),
 verifyEscrowPayment: (id) =>
   api.patch("/admin/escrows", { intent: "verifyPayment" }, { params: { id } }).then((r) => r.data),
+
+  // Pages (CMS)
+  getPages: (params) => api.get("/admin/pages", { params }).then((r) => r.data),
+  getPage: (id) => api.get("/admin/pages", { params: { id } }).then((r) => r.data),
+  createPage: (payload) => api.post("/admin/pages", payload).then((r) => r.data),
+  updatePage: (id, payload) => api.patch("/admin/pages", payload, { params: { id } }).then((r) => r.data),
+  deletePage: (id) => api.delete("/admin/pages", { params: { id } }).then((r) => r.data),
 };

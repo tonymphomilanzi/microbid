@@ -1,34 +1,50 @@
 import { Route, Routes } from "react-router-dom";
+
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
+import { Toaster } from "./components/ui/toaster";
+
+import AuthModal from "./components/auth/AuthModal";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
+import AdminRoute from "./components/auth/AdminRoute";
+
+import usePresencePing from "./hooks/usePresencePing";
+
+// -----------------------------
+// Public pages
+// -----------------------------
 import Home from "./pages/Home";
-import Pricing from "./pages/Pricing";
 import Marketplace from "./pages/Marketplace";
 import ListingDetails from "./pages/ListingDetails";
+import Feed from "./pages/Feed";
+import FeedPostDetails from "./pages/FeedPostDetails";
+import Pricing from "./pages/Pricing";
+import Streams from "./pages/Streams";
+import StreamWatch from "./pages/StreamWatch";
+
+// CMS-rendered pages (footer links)
+import SitePage from "./pages/SitePage";
+
+// -----------------------------
+// Protected (user)
+/// -----------------------------
 import Dashboard from "./pages/Dashboard";
 import CreateListing from "./pages/CreateListing";
-import ProtectedRoute from "./components/auth/ProtectedRoute";
-import AuthModal from "./components/auth/AuthModal";
-import AdminRoute from "./components/auth/AdminRoute";
+import Notifications from "./pages/Notifications";
+import CheckoutPage from "./pages/CheckoutPage";
+
+// -----------------------------
+// Admin
+// -----------------------------
 import AdminShell from "./components/admin/AdminShell";
 import AdminHome from "./pages/admin/AdminHome";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminListings from "./pages/admin/AdminListings";
 import AdminPlatforms from "./pages/admin/AdminPlatforms";
 import AdminCategories from "./pages/admin/AdminCategories";
-import Feed from "./pages/Feed";
 import AdminFeed from "./pages/admin/AdminFeed";
-import FeedPostDetails from "./pages/FeedPostDetails";
-import { Toaster } from "./components/ui/toaster";
-
-import usePresencePing from "./hooks/usePresencePing";
-import CheckoutPage from "./pages/CheckoutPage";
 import AdminSettings from "./pages/admin/AdminSettings";
-import AdminEscrows from "./pages/admin/AdminEscrows"; // NEW
-import Notifications from "./pages/Notifications";
-
-import Streams from "./pages/Streams";
-import StreamWatch from "./pages/StreamWatch";
+import AdminEscrows from "./pages/admin/AdminEscrows";
 import AdminStreams from "./pages/admin/AdminStreams";
 
 export default function App() {
@@ -36,20 +52,43 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Global layout */}
       <Navbar />
       <AuthModal />
 
       <Routes>
-        {/* Public */}
+        {/* ============================================================
+            PUBLIC ROUTES (no login required)
+           ============================================================ */}
         <Route path="/" element={<Home />} />
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/listings/:id" element={<ListingDetails />} />
-        <Route path="/checkout/:listingId" element={<CheckoutPage />} />
+
+        {/* Streams (public) */}
+        <Route path="/streams" element={<Streams />} />
+        <Route path="/streams/:id" element={<StreamWatch />} />
+
+        {/* Feed (public) */}
         <Route path="/feed" element={<Feed />} />
         <Route path="/feed/:id" element={<FeedPostDetails />} />
+
+        {/* Pricing (public) */}
         <Route path="/pricing" element={<Pricing />} />
 
-        {/* User protected */}
+        {/* CMS pages (public). */}
+        <Route path="/about" element={<SitePage />} />
+        <Route path="/sellers" element={<SitePage />} />
+        <Route path="/contact" element={<SitePage />} />
+        <Route path="/escrow-service" element={<SitePage />} />
+        <Route path="/fees" element={<SitePage />} />
+        <Route path="/safety" element={<SitePage />} />
+        <Route path="/privacy-policy" element={<SitePage />} />
+        <Route path="/cookies-policy" element={<SitePage />} />
+        <Route path="/terms" element={<SitePage />} />
+
+        {/* ============================================================
+            PROTECTED USER ROUTES (login required)
+           ============================================================ */}
         <Route
           path="/dashboard"
           element={
@@ -58,22 +97,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        
 
-<Route path="/streams" element={<Streams />} />
-<Route path="/streams/:id" element={<StreamWatch />} />
-
-
-
-          {/**Notifications route */}
-        <Route
-           path="/notifications"
-           element={
-           <ProtectedRoute>
-          <Notifications />
-         </ProtectedRoute>
-  }
-/>
         <Route
           path="/create"
           element={
@@ -83,7 +107,29 @@ export default function App() {
           }
         />
 
-        {/* Admin */}
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Notifications />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Checkout requires login in your flow (creates escrow, proof submission etc.) */}
+        <Route
+          path="/checkout/:listingId"
+          element={
+            <ProtectedRoute>
+              <CheckoutPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ============================================================
+            ADMIN ROUTES (admin-only)
+            IMPORTANT: child paths must be RELATIVE (no leading /)
+           ============================================================ */}
         <Route
           path="/admin"
           element={
@@ -98,14 +144,17 @@ export default function App() {
           <Route path="platforms" element={<AdminPlatforms />} />
           <Route path="categories" element={<AdminCategories />} />
           <Route path="feed" element={<AdminFeed />} />
-          <Route path="/admin/streams" element={<AdminStreams />} />
-
-          {/* IMPORTANT: child routes must be relative (no leading /) */}
+          <Route path="streams" element={<AdminStreams />} /> {/*  FIXED */}
           <Route path="settings" element={<AdminSettings />} />
-
-          {/* NEW */}
           <Route path="escrows" element={<AdminEscrows />} />
+
+          {/* Later: CMS admin page editor */}
+          {/* <Route path="pages" element={<AdminPages />} /> */}
         </Route>
+
+        {/* Optional: 404
+        <Route path="*" element={<NotFound />} />
+        */}
       </Routes>
 
       <Footer />
