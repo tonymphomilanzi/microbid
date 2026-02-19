@@ -137,6 +137,8 @@ model Listing {
   acceptedBidderId  String?
   acceptedBidAmount Int?
 
+  discountPercent   Int?    // NEW (optional; use for Streaming Kit products)
+
 }
 
 model Purchase {

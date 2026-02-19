@@ -111,31 +111,50 @@ export default function ListingDetails() {
   const [accepting, setAccepting] = useState(false);
 
   // -----------------------------
-  // Derived flags (MUST be defined before use)
+  // Derived flags
   // -----------------------------
   const isOwner = Boolean(user && listing?.sellerId === user.uid);
 
   const hasAcceptedBid = Boolean(listing?.acceptedBidId);
   const isWinner = Boolean(user && hasAcceptedBid && listing?.acceptedBidderId === user.uid);
 
+  // ✅ Streaming Kit detection
+  const STREAMING_KITS_SLUG = "streaming-kit";
+  const isStreamingKit = (() => {
+    const slug = String(listing?.category?.slug || "").toLowerCase().trim();
+    const name = String(listing?.category?.name || "").toLowerCase().trim();
+    return slug === STREAMING_KITS_SLUG || name === "streaming kit" || name === "streaming-kit";
+  })();
+
+  // ✅ Discount logic (Streaming Kit only; only when no accepted bid)
+  const listPrice = Number(listing?.price ?? 0);
+  const discountPercent = Math.trunc(Number(listing?.discountPercent ?? 0));
+  const hasDiscount =
+    Boolean(isStreamingKit) &&
+    !hasAcceptedBid &&
+    Number.isFinite(discountPercent) &&
+    discountPercent > 0;
+
+  const discountedListPrice = hasDiscount
+    ? Math.max(1, Math.round((listPrice * (100 - discountPercent)) / 100))
+    : listPrice;
+
+  // Effective price used by checkout + modal
   const effectivePrice = hasAcceptedBid
     ? Number(listing?.acceptedBidAmount ?? listing?.price ?? 0)
-    : Number(listing?.price ?? 0);
+    : discountedListPrice;
 
   // User payment state (from backend /api/listings/:id)
   const myEscrow = listing?.myEscrow ?? null;
   const myEscrowStatus = myEscrow?.status ?? null;
   const myPurchase = listing?.myPurchase ?? null;
 
-  // "paid" in your manual flow = FEE_PAID (submitted) or FULLY_PAID (verified)
   const hasPaidOrSubmitted = Boolean(user && ["FEE_PAID", "FULLY_PAID"].includes(myEscrowStatus));
   const isVerifiedPaid = Boolean(user && myEscrowStatus === "FULLY_PAID");
   const hasPurchased = Boolean(user && myPurchase);
 
-  // This is what disables the Pay/Buy button and prevents the modal
   const disablePayButton = hasPaidOrSubmitted || hasPurchased;
 
-  // Listing locked by someone else (optional — backend returns paymentLock without buyerId)
   const paymentLock = listing?.paymentLock ?? null;
   const lockedForOtherBuyer =
     Boolean(paymentLock) && !disablePayButton && !(hasAcceptedBid && isWinner) && !isOwner;
@@ -148,7 +167,6 @@ export default function ListingDetails() {
     "flex w-full items-center justify-center gap-2 px-3 py-3 text-sm transition hover:bg-muted/20";
 
   useEffect(() => {
-    // Safety: if state flips to "paid", close the modal immediately.
     if (buyOpen && disablePayButton) setBuyOpen(false);
   }, [buyOpen, disablePayButton]);
 
@@ -458,7 +476,6 @@ export default function ListingDetails() {
   function buy() {
     if (!user) return openAuthModal();
 
-    // IMPORTANT: do not open the payment modal if already paid/submitted
     if (disablePayButton) {
       toast({
         title: "Already paid",
@@ -467,7 +484,6 @@ export default function ListingDetails() {
       return;
     }
 
-    // If locked by another buyer’s payment
     if (lockedForOtherBuyer) {
       toast({
         title: "Reserved",
@@ -613,8 +629,32 @@ export default function ListingDetails() {
             <div className="grid grid-cols-2 gap-3">
               <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Price</div>
-                  <div className="text-lg font-semibold">${listing.price}</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs text-muted-foreground">Price</div>
+
+                    {/* ✅ Save badge */}
+                    {hasDiscount ? (
+                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 ring-1 ring-emerald-500/20">
+                        Save {discountPercent}%
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* ✅ Discounted price card look */}
+                  {!hasAcceptedBid && hasDiscount ? (
+                    <div className="mt-1 space-y-1">
+                      <div className="flex items-end gap-2">
+                        <div className="text-2xl font-semibold tracking-tight">${discountedListPrice}</div>
+                        <div className="pb-0.5 text-sm text-muted-foreground line-through">${listing.price}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Discounted price applied at checkout.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-lg font-semibold">${listing.price}</div>
+                  )}
+
                   {hasAcceptedBid ? (
                     <div className="mt-1 text-xs text-muted-foreground">
                       Accepted bid: <span className="font-semibold text-foreground">${effectivePrice}</span>
@@ -645,64 +685,68 @@ export default function ListingDetails() {
               </Card>
             </div>
 
-            {/* income/expense/net */}
-            <div className="grid grid-cols-3 gap-3">
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Income (monthly)</div>
-                  <div className="text-base font-semibold">{moneyOrDash(income)}</div>
-                </CardContent>
-              </Card>
+            {/* income/expense/net (hide for streaming kits) */}
+            {!isStreamingKit ? (
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Income (monthly)</div>
+                    <div className="text-base font-semibold">{moneyOrDash(income)}</div>
+                  </CardContent>
+                </Card>
 
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Expenses (monthly)</div>
-                  <div className="text-base font-semibold">{moneyOrDash(expense)}</div>
-                </CardContent>
-              </Card>
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Expenses (monthly)</div>
+                    <div className="text-base font-semibold">{moneyOrDash(expense)}</div>
+                  </CardContent>
+                </Card>
 
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Net (monthly)</div>
-                  <div className="text-base font-semibold">{moneyOrDash(net)}</div>
-                </CardContent>
-              </Card>
-            </div>
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Net (monthly)</div>
+                    <div className="text-base font-semibold">{moneyOrDash(net)}</div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : null}
 
-            {/* metrics */}
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Followers/Subs</div>
-                  <div className="text-base font-semibold">{m.followers ?? "—"}</div>
-                </CardContent>
-              </Card>
+            {/* metrics (hide for streaming kits) */}
+            {!isStreamingKit ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Followers/Subs</div>
+                    <div className="text-base font-semibold">{m.followers ?? "—"}</div>
+                  </CardContent>
+                </Card>
 
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Avg Views</div>
-                  <div className="text-base font-semibold">{m.avgViews ?? "—"}</div>
-                </CardContent>
-              </Card>
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Avg Views</div>
+                    <div className="text-base font-semibold">{m.avgViews ?? "—"}</div>
+                  </CardContent>
+                </Card>
 
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Engagement</div>
-                  <div className="text-base font-semibold">
-                    {m.engagementRate ? `${m.engagementRate}%` : "—"}
-                  </div>
-                </CardContent>
-              </Card>
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Engagement</div>
+                    <div className="text-base font-semibold">
+                      {m.engagementRate ? `${m.engagementRate}%` : "—"}
+                    </div>
+                  </CardContent>
+                </Card>
 
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-4">
-                  <div className="text-xs text-muted-foreground">Monetized</div>
-                  <div className="text-base font-semibold">
-                    {typeof m.monetized === "boolean" ? (m.monetized ? "Yes" : "No") : "—"}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">Monetized</div>
+                    <div className="text-base font-semibold">
+                      {typeof m.monetized === "boolean" ? (m.monetized ? "Yes" : "No") : "—"}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : null}
 
             {/* Like | Comment | Share */}
             <div className="grid grid-cols-3 overflow-hidden rounded-xl border border-border/60 bg-muted/10">
@@ -770,7 +814,7 @@ export default function ListingDetails() {
               </div>
             ) : null}
 
-            {/* Payment status messages (THIS IS WHAT YOU ASKED FOR) */}
+            {/* Payment status messages */}
             {hasPurchased || isVerifiedPaid ? (
               <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
                 <div className="font-semibold">Purchase confirmed</div>
@@ -794,7 +838,7 @@ export default function ListingDetails() {
               </div>
             ) : null}
 
-            {/* Open bids drawer (owner can open too) */}
+            {/* Open bids drawer */}
             <Button
               type="button"
               onClick={openBids}
@@ -1117,7 +1161,7 @@ export default function ListingDetails() {
           open={buyOpen}
           onOpenChange={setBuyOpen}
           priceUsd={effectivePrice}
-          listingId={id} 
+          listingId={id}
           onNext={onChoosePayment}
         />
       </div>

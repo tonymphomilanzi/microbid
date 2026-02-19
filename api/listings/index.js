@@ -17,9 +17,7 @@ function qv(v) {
 }
 
 function getQuery(req) {
-  // Next/Vercel sometimes provides req.query, sometimes not
   if (req?.query && typeof req.query === "object") return req.query;
-
   const url = new URL(req.url || "", "http://localhost");
   return Object.fromEntries(url.searchParams.entries());
 }
@@ -88,6 +86,15 @@ function toNonNegativeIntOrNullOrUndefined(v) {
   return int;
 }
 
+// NEW: optional integer percent (0..90) or null/undefined
+function toIntPercentOrNullOrUndefined(v) {
+  if (v === undefined) return undefined; // don't touch (important for edits)
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.trunc(n);
+}
+
 function cleanImageList(arr) {
   const list = Array.isArray(arr) ? arr : [];
   const cleaned = list
@@ -116,24 +123,24 @@ function getIdempotencyKey(req, body) {
 }
 
 async function listingAlreadySoldOrLocked(listingId) {
-  // If any purchase exists => sold (strongest signal)
   const purchase = await prisma.purchase.findFirst({
     where: { listingId },
     select: { id: true },
   });
   if (purchase) return { blocked: true, reason: "SOLD" };
 
-  // If someone has submitted payment already => lock it
   const locked = await prisma.escrowTransaction.findFirst({
     where: {
       listingId,
-      status: { in: ["FEE_PAID", "FULLY_PAID"] }, // paid or verified
+      status: { in: ["FEE_PAID", "FULLY_PAID"] },
     },
     orderBy: { createdAt: "desc" },
     select: { id: true, buyerId: true, status: true },
   });
 
-  if (locked) return { blocked: true, reason: locked.status, buyerId: locked.buyerId, escrowId: locked.id };
+  if (locked) {
+    return { blocked: true, reason: locked.status, buyerId: locked.buyerId, escrowId: locked.id };
+  }
   return { blocked: false };
 }
 
@@ -255,10 +262,7 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 
   if (method === "BTC") {
     return {
-      // NEW: QR code URL (optional)
-      // If not set, frontend can show "QR not set yet" placeholder
-      qrUrl: opt(cfg?.companyBtcQrUrl),
-
+      qrUrl: opt(cfg?.companyBtcQrUrl) || null, // ✅ includes QR if configured
       lines: [
         `Send exactly $${totalUsd} worth of BTC to the address below.`,
         `Reference code: ${escrowId}. Keep it for proof.`,
@@ -321,9 +325,27 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 // Stripe lazy loader (prevents GET from crashing)
 // -----------------------------
 async function getStripeLazy() {
-  // Only load Stripe module when checkout intent is used.
   const mod = await import("../_lib/stripe.js");
   return mod.getStripe();
+}
+
+// -----------------------------
+// Helper: detect streaming kit category
+// -----------------------------
+function isStreamingKitCategoryRow(cat) {
+  if (!cat) return false;
+  const slug = String(cat.slug || "").toLowerCase().trim();
+  const name = String(cat.name || "").toLowerCase().trim();
+  return slug === "streaming-kit" || name === "streaming kit" || name === "streaming-kit";
+}
+
+function applyDiscountIntPrice(priceInt, discountPercent) {
+  const p = Math.trunc(Number(priceInt || 0));
+  const d = Math.trunc(Number(discountPercent || 0));
+  if (!Number.isFinite(p) || p <= 0) return p;
+  if (!Number.isFinite(d) || d <= 0) return p;
+  const next = Math.round((p * (100 - d)) / 100);
+  return Math.max(1, next);
 }
 
 // -----------------------------
@@ -507,122 +529,113 @@ export default async function handler(req, res) {
         if (cached) return send(res, cached.status, cached.body);
       }
 
-
-
       // -----------------------------------------------------------------------
-// Intent: acceptHighestBid (seller only)
-// Chooses highest bid and reserves listing for that bidder.
-// -----------------------------------------------------------------------
-if (intent === "acceptHighestBid") {
-  if (!checkRateLimitOr429(req, res, { scope: "post:acceptHighestBid", limit: 30, windowMs: 60_000 }))
-    return;
+      // Intent: acceptHighestBid (seller only)
+      // -----------------------------------------------------------------------
+      if (intent === "acceptHighestBid") {
+        if (!checkRateLimitOr429(req, res, { scope: "post:acceptHighestBid", limit: 30, windowMs: 60_000 }))
+          return;
 
-  const listingId = String(body.listingId || "");
-  if (!listingId) return send(res, 400, { message: "Missing listingId" });
+        const listingId = String(body.listingId || "");
+        if (!listingId) return send(res, 400, { message: "Missing listingId" });
 
-  const result = await prisma.$transaction(async (tx) => {
-    await advisoryLock(tx, `bid:acceptHighest:${listingId}`);
+        const result = await prisma.$transaction(async (tx) => {
+          await advisoryLock(tx, `bid:acceptHighest:${listingId}`);
 
-    const listing = await tx.listing.findUnique({
-      where: { id: listingId },
-      select: {
-        id: true,
-        sellerId: true,
-        status: true,
-        biddingClosed: true,
-        acceptedBidId: true,
-      },
-    });
+          const listing = await tx.listing.findUnique({
+            where: { id: listingId },
+            select: {
+              id: true,
+              sellerId: true,
+              status: true,
+              biddingClosed: true,
+              acceptedBidId: true,
+            },
+          });
 
-    if (!listing) {
-      const err = new Error("Listing not found");
-      err.statusCode = 404;
-      throw err;
-    }
+          if (!listing) {
+            const err = new Error("Listing not found");
+            err.statusCode = 404;
+            throw err;
+          }
 
-    if (listing.sellerId !== decoded.uid) {
-      const err = new Error("Forbidden");
-      err.statusCode = 403;
-      throw err;
-    }
+          if (listing.sellerId !== decoded.uid) {
+            const err = new Error("Forbidden");
+            err.statusCode = 403;
+            throw err;
+          }
 
-    // already accepted/closed => idempotent
-    if (listing.biddingClosed && listing.acceptedBidId) {
-      const acceptedBid = await tx.listingBid.findUnique({
-        where: { id: listing.acceptedBidId },
-        include: { bidder: { select: { id: true, username: true, avatarUrl: true } } },
-      });
-      return { listing, acceptedBid };
-    }
+          if (listing.biddingClosed && listing.acceptedBidId) {
+            const acceptedBid = await tx.listingBid.findUnique({
+              where: { id: listing.acceptedBidId },
+              include: { bidder: { select: { id: true, username: true, avatarUrl: true } } },
+            });
+            return { listing, acceptedBid };
+          }
 
-    // if already sold, stop
-    const purchase = await tx.purchase.findFirst({
-      where: { listingId },
-      select: { id: true },
-    });
-    if (purchase) {
-      const err = new Error("Listing already sold");
-      err.statusCode = 409;
-      throw err;
-    }
+          const purchase = await tx.purchase.findFirst({
+            where: { listingId },
+            select: { id: true },
+          });
+          if (purchase) {
+            const err = new Error("Listing already sold");
+            err.statusCode = 409;
+            throw err;
+          }
 
-    const top = await tx.listingBid.findFirst({
-      where: { listingId },
-      orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
-      include: {
-        bidder: { select: { id: true, username: true, avatarUrl: true } },
-      },
-    });
+          const top = await tx.listingBid.findFirst({
+            where: { listingId },
+            orderBy: [{ amount: "desc" }, { createdAt: "desc" }],
+            include: {
+              bidder: { select: { id: true, username: true, avatarUrl: true } },
+            },
+          });
 
-    if (!top) {
-      const err = new Error("No bids to accept");
-      err.statusCode = 400;
-      throw err;
-    }
+          if (!top) {
+            const err = new Error("No bids to accept");
+            err.statusCode = 400;
+            throw err;
+          }
 
-    const updatedListing = await tx.listing.update({
-      where: { id: listingId },
-      data: {
-        biddingClosed: true,
-        status: "INACTIVE", // reserve (hides from marketplace)
-        acceptedBidId: top.id,
-        acceptedBidderId: top.bidderId,
-        acceptedBidAmount: top.amount,
-      },
-      select: {
-        id: true,
-        status: true,
-        biddingClosed: true,
-        acceptedBidId: true,
-        acceptedBidderId: true,
-        acceptedBidAmount: true,
-      },
-    });
+          const updatedListing = await tx.listing.update({
+            where: { id: listingId },
+            data: {
+              biddingClosed: true,
+              status: "INACTIVE",
+              acceptedBidId: top.id,
+              acceptedBidderId: top.bidderId,
+              acceptedBidAmount: top.amount,
+            },
+            select: {
+              id: true,
+              status: true,
+              biddingClosed: true,
+              acceptedBidId: true,
+              acceptedBidderId: true,
+              acceptedBidAmount: true,
+            },
+          });
 
-    const canNotify = Boolean(tx.notification);
+          const canNotify = Boolean(tx.notification);
 
-//  notify the winner
-if (canNotify) {
-  await tx.notification.create({
-    data: {
-      userId: top.bidderId,
-      type: "BID_WON",
-      title: "You won the bid",
-      body: `Your bid of $${top.amount} was accepted. Complete payment to claim the listing.`,
-      url: `/listings/${listingId}`,
-      meta: { listingId, bidId: top.id, amount: top.amount },
-    },
-  });
-}
+          if (canNotify) {
+            await tx.notification.create({
+              data: {
+                userId: top.bidderId,
+                type: "BID_WON",
+                title: "You won the bid",
+                body: `Your bid of $${top.amount} was accepted. Complete payment to claim the listing.`,
+                url: `/listings/${listingId}`,
+                meta: { listingId, bidId: top.id, amount: top.amount },
+              },
+            });
+          }
 
-    return { listing: updatedListing, acceptedBid: top };
-  });
+          return { listing: updatedListing, acceptedBid: top };
+        });
 
-  return send(res, 200, result);
-}
-
-
-
+        return send(res, 200, result);
+      }
 
       // -------- addListingBid --------
       if (intent === "addListingBid") {
@@ -642,11 +655,12 @@ if (canNotify) {
 
         if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
 
-        ////////////////////////////////////////////////////////////////
         if (listing.biddingClosed || listing.acceptedBidId) {
-        return send(res, 400, { message: "Bidding is closed for this listing." });
-}
-        if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot bid on your own listing." });
+          return send(res, 400, { message: "Bidding is closed for this listing." });
+        }
+        if (listing.sellerId === decoded.uid) {
+          return send(res, 403, { message: "You cannot bid on your own listing." });
+        }
 
         const result = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `bid:${listingId}`);
@@ -717,7 +731,7 @@ if (canNotify) {
             try {
               await tx.listingLike.create({ data: { listingId, userId: decoded.uid } });
             } catch {
-              // ignore race
+              // ignore
             }
           }
 
@@ -751,7 +765,7 @@ if (canNotify) {
         if (text.length > 2000) return send(res, 400, { message: "Comment too long (max 2000 chars)" });
 
         const result = await prisma.$transaction(async (tx) => {
-        await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
+          await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
 
           const comment = await tx.listingComment.create({
             data: { listingId, authorId: decoded.uid, body: text },
@@ -782,7 +796,7 @@ if (canNotify) {
           };
         });
 
-      if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 201, result, 2 * 60_000);
+        if (userScopedIdemKey) setCachedIdem(userScopedIdemKey, 201, result, 2 * 60_000);
         return send(res, 201, result);
       }
 
@@ -807,42 +821,48 @@ if (canNotify) {
         const mapped = map[method];
         if (!mapped) return send(res, 400, { message: "Unsupported payment method" });
 
+        // ✅ UPDATED: select discountPercent + category (for streaming kit discount application)
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
-          select: { id: true, price: true, status: true, sellerId: true, acceptedBidderId: true, acceptedBidAmount: true, acceptedBidId: true },
+          select: {
+            id: true,
+            price: true,
+            status: true,
+            sellerId: true,
+            acceptedBidderId: true,
+            acceptedBidAmount: true,
+            acceptedBidId: true,
+            discountPercent: true, // ✅ NEW
+            category: { select: { slug: true, name: true } }, // ✅ NEW
+          },
         });
 
         if (!listing) return send(res, 404, { message: "Listing not available" });
 
-        
         const allowedStatus = listing.acceptedBidId ? ["ACTIVE", "INACTIVE"] : ["ACTIVE"];
         if (!allowedStatus.includes(listing.status)) {
-        return send(res, 404, { message: "Listing not available" });
-}
-
-
-
+          return send(res, 404, { message: "Listing not available" });
+        }
 
         if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
-        // If a bid has been accepted, ONLY that bidder can pay, and price becomes accepted bid amount.
+
         if (listing.acceptedBidId) {
-        if (listing.acceptedBidderId !== decoded.uid) {
-        return send(res, 409, { message: "This listing is reserved for another buyer (bid accepted)." });
-  }
-        if (!listing.acceptedBidAmount) {
-        return send(res, 500, { message: "Accepted bid amount missing." });
-  }
-}
+          if (listing.acceptedBidderId !== decoded.uid) {
+            return send(res, 409, { message: "This listing is reserved for another buyer (bid accepted)." });
+          }
+          if (!listing.acceptedBidAmount) {
+            return send(res, 500, { message: "Accepted bid amount missing." });
+          }
+        }
 
         const lock = await listingAlreadySoldOrLocked(listingId);
         if (lock.blocked && lock.buyerId !== decoded.uid) {
-        return send(res, 409, { message: "This listing is already reserved or sold." });
-}
+          return send(res, 409, { message: "This listing is already reserved or sold." });
+        }
         if (lock.blocked && lock.reason === "SOLD") {
-          // Optionally sync listing status
-         await prisma.listing.update({ where: { id: listingId }, data: { status: "SOLD" } }).catch(() => {});
-         return send(res, 409, { message: "This listing is already sold." });
-}
+          await prisma.listing.update({ where: { id: listingId }, data: { status: "SOLD" } }).catch(() => {});
+          return send(res, 409, { message: "This listing is already sold." });
+        }
 
         const cfg = await getAppConfigCached();
         const missing = validateManualConfigForMethod(cfg, method);
@@ -857,6 +877,8 @@ if (canNotify) {
         const feeBps = Number(cfg?.escrowFeeBps ?? 200);
         const minFeeCents = 0;
         const escrowAgentId = "SYSTEM";
+
+        const isKit = isStreamingKitCategoryRow(listing.category);
 
         const escrow = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `escrow:start:${listingId}:${decoded.uid}:${method}`);
@@ -874,8 +896,12 @@ if (canNotify) {
 
           if (existing) return existing;
 
-          const effectivePrice = listing.acceptedBidId ? listing.acceptedBidAmount : listing.price;
-          const priceCents = Math.trunc(Number(effectivePrice) * 100);
+          // If no accepted bid and it's a streaming kit product, apply discountPercent to listing price
+          const basePrice = listing.acceptedBidId ? listing.acceptedBidAmount : listing.price;
+          const discounted =
+            !listing.acceptedBidId && isKit ? applyDiscountIntPrice(basePrice, listing.discountPercent) : basePrice;
+
+          const priceCents = Math.trunc(Number(discounted) * 100);
           const calcFee = Math.round((priceCents * feeBps) / 10_000);
           const feeCents = Math.max(calcFee, minFeeCents);
           const totalChargeCents = priceCents + feeCents;
@@ -908,139 +934,128 @@ if (canNotify) {
         return send(res, 200, payload);
       }
 
-
       // -----------------------------------------------------------------------
-// Intent: submitEscrowPayment
-// Buyer clicks "I have paid" and submits reference + optional proof URL.
-// Creates EscrowProof(kind=PAYMENT_PROOF) and moves status INITIATED -> FEE_PAID.
-// -----------------------------------------------------------------------
- if (intent === "submitEscrowPayment") {
-  if (
-    !checkRateLimitOr429(req, res, {
-      scope: "post:submitEscrowPayment",
-      limit: 15,
-      windowMs: 60_000,
-    })
-  )
-    return;
-
-  const escrowId = String(body.escrowId || "");
-  const reference = String(body.reference || "").trim();
-  const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
-  const note = body.note ? String(body.note).trim() : null;
-
-  if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
-  if (!reference) return send(res, 400, { message: "Payment reference is required" });
-
-  const result = await prisma.$transaction(async (tx) => {
-    await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
-
-    const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
-    if (!escrow) {
-      const err = new Error("Escrow not found");
-      err.statusCode = 404;
-      throw err;
-    }
-
-    if (escrow.buyerId !== decoded.uid) {
-      const err = new Error("Forbidden");
-      err.statusCode = 403;
-      throw err;
-    }
-
-    // Prevent submitting if listing already sold
-    const purchase = await tx.purchase.findFirst({
-      where: { listingId: escrow.listingId },
-      select: { id: true },
-    });
-    if (purchase) {
-      const err = new Error("Listing already sold");
-      err.statusCode = 409;
-      throw err;
-    }
-
-    if (!["INITIATED", "FEE_PAID"].includes(escrow.status)) {
-      const err = new Error(`Cannot submit payment in status ${escrow.status}`);
-      err.statusCode = 400;
-      throw err;
-    }
-
-    // only notify once when INITIATED -> FEE_PAID
-    const didTransition = escrow.status === "INITIATED";
-    const canNotify = Boolean(tx.notification);
-
-    // Load listing title for nicer messages (optional but recommended)
-    const listingRow = await tx.listing.findUnique({
-      where: { id: escrow.listingId },
-      select: { title: true },
-    });
-    const listingTitle = listingRow?.title || "this listing";
-    const listingUrl = `/listings/${escrow.listingId}`;
-
-    const existingProof = await tx.escrowProof.findFirst({
-      where: { escrowId, kind: "PAYMENT_PROOF", note: reference },
-      orderBy: { createdAt: "desc" },
-    });
-
-    const proof =
-      existingProof ||
-      (await tx.escrowProof.create({
-        data: { escrowId, kind: "PAYMENT_PROOF", url: proofUrl, note: reference },
-      }));
-
-    const updatedEscrow =
-      escrow.status === "INITIATED"
-        ? await tx.escrowTransaction.update({
-            where: { id: escrowId },
-            data: {
-              status: "FEE_PAID",
-              notes: note ? [escrow.notes, note].filter(Boolean).join("\n") : escrow.notes,
-            },
+      // Intent: submitEscrowPayment
+      // -----------------------------------------------------------------------
+      if (intent === "submitEscrowPayment") {
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:submitEscrowPayment",
+            limit: 15,
+            windowMs: 60_000,
           })
-        : escrow;
+        )
+          return;
 
-    // Reserve the listing so nobody else can buy from marketplace
-    await tx.listing.update({
-      where: { id: escrow.listingId },
-      data: { status: "INACTIVE" },
-    });
+        const escrowId = String(body.escrowId || "");
+        const reference = String(body.reference || "").trim();
+        const proofUrl = body.proofUrl ? String(body.proofUrl).trim() : null;
+        const note = body.note ? String(body.note).trim() : null;
 
-    // Notifications (manual-only flow)
-    if (didTransition && canNotify) {
-      // Seller: payment submitted (pending verification)
-      await tx.notification.create({
-        data: {
-          userId: escrow.sellerId,
-          type: "PAYMENT_SUBMITTED",
-          title: "Payment submitted",
-          body: `Buyer submitted payment details for "${listingTitle}". Pending verification.`,
-          url: listingUrl,
-          meta: { escrowId: escrow.id, listingId: escrow.listingId },
-        },
-      });
+        if (!escrowId) return send(res, 400, { message: "Missing escrowId" });
+        if (!reference) return send(res, 400, { message: "Payment reference is required" });
 
-      // Buyer: confirmation that they submitted payment details
-      await tx.notification.create({
-        data: {
-          userId: escrow.buyerId,
-          type: "PAYMENT_SUBMITTED",
-          title: "Payment submitted",
-          body: `Your payment details for "${listingTitle}" were submitted and are pending verification.`,
-          url: listingUrl,
-          meta: { escrowId: escrow.id, listingId: escrow.listingId },
-        },
-      });
-    }
+        const result = await prisma.$transaction(async (tx) => {
+          await advisoryLock(tx, `escrow:submitPayment:${escrowId}`);
 
-    return { escrow: updatedEscrow, proof };
-  });
+          const escrow = await tx.escrowTransaction.findUnique({ where: { id: escrowId } });
+          if (!escrow) {
+            const err = new Error("Escrow not found");
+            err.statusCode = 404;
+            throw err;
+          }
 
-  return send(res, 200, result);
-}
+          if (escrow.buyerId !== decoded.uid) {
+            const err = new Error("Forbidden");
+            err.statusCode = 403;
+            throw err;
+          }
+
+          const purchase = await tx.purchase.findFirst({
+            where: { listingId: escrow.listingId },
+            select: { id: true },
+          });
+          if (purchase) {
+            const err = new Error("Listing already sold");
+            err.statusCode = 409;
+            throw err;
+          }
+
+          if (!["INITIATED", "FEE_PAID"].includes(escrow.status)) {
+            const err = new Error(`Cannot submit payment in status ${escrow.status}`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          const didTransition = escrow.status === "INITIATED";
+          const canNotify = Boolean(tx.notification);
+
+          const listingRow = await tx.listing.findUnique({
+            where: { id: escrow.listingId },
+            select: { title: true },
+          });
+          const listingTitle = listingRow?.title || "this listing";
+          const listingUrl = `/listings/${escrow.listingId}`;
+
+          const existingProof = await tx.escrowProof.findFirst({
+            where: { escrowId, kind: "PAYMENT_PROOF", note: reference },
+            orderBy: { createdAt: "desc" },
+          });
+
+          const proof =
+            existingProof ||
+            (await tx.escrowProof.create({
+              data: { escrowId, kind: "PAYMENT_PROOF", url: proofUrl, note: reference },
+            }));
+
+          const updatedEscrow =
+            escrow.status === "INITIATED"
+              ? await tx.escrowTransaction.update({
+                  where: { id: escrowId },
+                  data: {
+                    status: "FEE_PAID",
+                    notes: note ? [escrow.notes, note].filter(Boolean).join("\n") : escrow.notes,
+                  },
+                })
+              : escrow;
+
+          await tx.listing.update({
+            where: { id: escrow.listingId },
+            data: { status: "INACTIVE" },
+          });
+
+          if (didTransition && canNotify) {
+            await tx.notification.create({
+              data: {
+                userId: escrow.sellerId,
+                type: "PAYMENT_SUBMITTED",
+                title: "Payment submitted",
+                body: `Buyer submitted payment details for "${listingTitle}". Pending verification.`,
+                url: listingUrl,
+                meta: { escrowId: escrow.id, listingId: escrow.listingId },
+              },
+            });
+
+            await tx.notification.create({
+              data: {
+                userId: escrow.buyerId,
+                type: "PAYMENT_SUBMITTED",
+                title: "Payment submitted",
+                body: `Your payment details for "${listingTitle}" were submitted and are pending verification.`,
+                url: listingUrl,
+                meta: { escrowId: escrow.id, listingId: escrow.listingId },
+              },
+            });
+          }
+
+          return { escrow: updatedEscrow, proof };
+        });
+
+        return send(res, 200, result);
+      }
 
       // -------- checkout (Stripe) --------
       if (intent === "checkout") {
-        // Stripe is loaded lazily so GET /api/listings never crashes due to Stripe env/config.
         if (!checkRateLimitOr429(req, res, { scope: "post:checkout", limit: 10, windowMs: 60_000 }))
           return;
 
@@ -1103,6 +1118,7 @@ if (canNotify) {
         price,
         income,
         expense,
+        discountPercent, // NEW
         description,
         image,
         images,
@@ -1125,6 +1141,14 @@ if (canNotify) {
         return send(res, 400, { message: "Invalid expense (must be a number >= 0, or null)" });
       }
 
+      const dp = toIntPercentOrNullOrUndefined(discountPercent);
+      if (discountPercent !== undefined && dp === undefined) {
+        return send(res, 400, { message: "Invalid discountPercent (must be an integer between 0 and 90, or null)" });
+      }
+      if (dp !== undefined && dp !== null && (dp < 0 || dp > 90)) {
+        return send(res, 400, { message: "discountPercent must be between 0 and 90" });
+      }
+
       const dbUser = await prisma.user.upsert({
         where: { id: decoded.uid },
         update: { email: decoded.email ?? "unknown" },
@@ -1132,24 +1156,37 @@ if (canNotify) {
         select: { id: true, role: true },
       });
 
-      const platformRow = await prisma.platform.findFirst({
-        where: { name: platform, isActive: true },
-        select: { id: true },
-      });
-      if (!platformRow) return send(res, 400, { message: "Invalid or inactive platform" });
-
+      // Category lookup (also used for streaming kit detection)
       let categoryToSet = null;
+      let categoryRow = null;
+
       if (categoryId) {
         const cat = await prisma.category.findUnique({
           where: { id: categoryId },
-          select: { id: true, isActive: true, isAdminOnly: true },
+          select: { id: true, isActive: true, isAdminOnly: true, slug: true, name: true },
         });
 
         if (!cat || !cat.isActive) return send(res, 400, { message: "Invalid category" });
         if (cat.isAdminOnly && dbUser.role !== "ADMIN") {
           return send(res, 403, { message: "This category is admin-only" });
         }
+
+        categoryRow = cat;
         categoryToSet = cat.id;
+      }
+
+      const isStreamingKit = isStreamingKitCategoryRow(categoryRow);
+
+      // ✅ Enforce platform string for streaming kit products
+      const finalPlatform = isStreamingKit ? "Streaming Kit" : String(platform);
+
+      // Validate platform for non-streaming-kit listings
+      const platformRow = await prisma.platform.findFirst({
+        where: { name: finalPlatform, isActive: true },
+        select: { id: true },
+      });
+      if (!platformRow && !isStreamingKit) {
+        return send(res, 400, { message: "Invalid or inactive platform" });
       }
 
       const extraImages = cleanImageList(images);
@@ -1179,15 +1216,22 @@ if (canNotify) {
             where: { id },
             data: {
               title,
-              platform,
+              platform: finalPlatform,
               categoryId: categoryToSet,
               price: Math.trunc(numericPrice),
-              income: numericIncome,
-              expense: numericExpense,
+
+              // ✅ streaming kit products do not use income/expense/metrics
+              income: isStreamingKit ? null : numericIncome,
+              expense: isStreamingKit ? null : numericExpense,
+              metrics: isStreamingKit ? null : metrics ?? undefined,
+
+              // ✅ NEW: discount for streaming kit only; if not streaming kit -> always null
+              // dp === undefined means "not provided" (keep existing) ONLY when streaming kit
+              discountPercent: isStreamingKit ? dp : null,
+
               description,
               image: finalImages[0],
               images: finalImages,
-              metrics: metrics ?? undefined,
               status: status ?? undefined,
             },
             include: {
@@ -1206,21 +1250,26 @@ if (canNotify) {
           });
         });
 
-       return send(res, 200, { listing: updated });
+        return send(res, 200, { listing: updated });
       }
 
       const created = await prisma.listing.create({
         data: {
           title,
-          platform,
+          platform: finalPlatform,
           categoryId: categoryToSet,
           price: Math.trunc(numericPrice),
-          income: numericIncome ?? null,
-          expense: numericExpense ?? null,
+
+          income: isStreamingKit ? null : numericIncome ?? null,
+          expense: isStreamingKit ? null : numericExpense ?? null,
+          metrics: isStreamingKit ? null : metrics ?? null,
+
+          // ✅ NEW
+          discountPercent: isStreamingKit ? (dp === undefined ? null : dp) : null,
+
           description,
           image: finalImages[0],
           images: finalImages,
-          metrics: metrics ?? null,
           sellerId: decoded.uid,
         },
         include: {
@@ -1241,11 +1290,10 @@ if (canNotify) {
       return send(res, 201, { listing: created });
     }
 
-     res.setHeader("Allow", "GET, POST");
+    res.setHeader("Allow", "GET, POST");
     return send(res, 405, { message: "Method not allowed" });
   } catch (e) {
-    // This will appear in Vercel function logs:
-     console.error("API /listings crashed:", e);
-     return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
+    console.error("API /listings crashed:", e);
+    return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
   }
 }
