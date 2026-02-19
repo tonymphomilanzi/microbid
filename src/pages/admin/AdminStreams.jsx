@@ -313,7 +313,7 @@ export default function AdminStreams() {
         <DialogContent
           className={[
             "p-0 border-border/60 bg-card/95 backdrop-blur",
-            "w-[calc(100vw-1.5rem)] sm:w-auto sm:max-w-[720px]",
+            "w-[calc(100vw-1.5rem)] sm:w-auto sm:max-w-[760px]",
             "max-h-[90vh] overflow-hidden",
           ].join(" ")}
         >
@@ -325,6 +325,7 @@ export default function AdminStreams() {
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 pb-6 pt-4">
               <div className="grid gap-4 lg:grid-cols-2">
+                {/* Left: text fields */}
                 <div className="space-y-4">
                   <div>
                     <Label>Title *</Label>
@@ -350,9 +351,7 @@ export default function AdminStreams() {
                   <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/10 p-3">
                     <div>
                       <div className="text-sm font-medium">Active</div>
-                      <div className="text-xs text-muted-foreground">
-                        If disabled, it won’t show to the public.
-                      </div>
+                      <div className="text-xs text-muted-foreground">If disabled, it won’t show to the public.</div>
                     </div>
                     <Switch
                       checked={Boolean(form.isActive)}
@@ -376,111 +375,111 @@ export default function AdminStreams() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  {/* Cover */}
-                  <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">Cover image *</div>
-                        <div className="text-xs text-muted-foreground">Used for image thumbnail.</div>
-                      </div>
+                {/* Right: media (mobile = horizontal scroll row) */}
+                <div className="sm:space-y-4">
+                  <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:block sm:overflow-visible sm:pb-0">
+                    {/* Cover */}
+                    <div className="min-w-[260px] sm:min-w-0 sm:mb-4">
+                      <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">Cover image *</div>
+                            <div className="text-xs text-muted-foreground">Used for thumbnail.</div>
+                          </div>
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-2"
-                        disabled={uploadingCover || saving}
-                        onClick={() => coverInputRef.current?.click()}
-                      >
-                        {uploadingCover ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <UploadCloud className="h-4 w-4" />
-                        )}
-                        Upload
-                      </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="gap-2"
+                            disabled={uploadingCover || saving}
+                            onClick={() => coverInputRef.current?.click()}
+                          >
+                            {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                            Upload
+                          </Button>
 
-                      <input
-                        ref={coverInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        disabled={uploadingCover || saving}
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          await onUploadCoverFile(f);
-                        }}
-                      />
-                    </div>
-
-                    <div className="mt-3">
-                      {form.coverImageUrl ? (
-                        <div className="overflow-hidden rounded-xl border border-border/60 bg-background aspect-[9/16] w-full max-w-[260px]">
-                          <img
-                            src={form.coverImageUrl}
-                            alt="Cover preview"
-                            className="h-full w-full object-cover"
+                          <input
+                            ref={coverInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingCover || saving}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              await onUploadCoverFile(f);
+                            }}
                           />
                         </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">No cover uploaded yet.</div>
-                      )}
+
+                        <div className="mt-3">
+                          {form.coverImageUrl ? (
+                            <div className="overflow-hidden rounded-xl border border-border/60 bg-background aspect-[3/4] sm:aspect-[9/16] w-full">
+                              <img src={form.coverImageUrl} alt="Cover preview" className="h-full w-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">No cover uploaded yet.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Video */}
+                    <div className="min-w-[260px] sm:min-w-0">
+                      <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">Video *</div>
+                            <div className="text-xs text-muted-foreground">Short mp4/mov.</div>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="gap-2"
+                            disabled={uploadingVideo || saving}
+                            onClick={() => videoInputRef.current?.click()}
+                          >
+                            {uploadingVideo ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                            Upload
+                          </Button>
+
+                          <input
+                            ref={videoInputRef}
+                            type="file"
+                            accept="video/*"
+                            className="hidden"
+                            disabled={uploadingVideo || saving}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              await onUploadVideoFile(f);
+                            }}
+                          />
+                        </div>
+
+                        <div className="mt-3">
+                          {form.videoUrl ? (
+                            <div className="overflow-hidden rounded-xl border border-border/60 bg-black aspect-[3/4] sm:aspect-[9/16] w-full">
+                              <video
+                                src={form.videoUrl}
+                                className="h-full w-full object-cover"
+                                controls
+                                playsInline
+                                muted
+                              />
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">No video uploaded yet.</div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Video */}
-                  <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">Video *</div>
-                        <div className="text-xs text-muted-foreground">Upload a short mp4/mov.</div>
-                      </div>
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-2"
-                        disabled={uploadingVideo || saving}
-                        onClick={() => videoInputRef.current?.click()}
-                      >
-                        {uploadingVideo ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <UploadCloud className="h-4 w-4" />
-                        )}
-                        Upload
-                      </Button>
-
-                      <input
-                        ref={videoInputRef}
-                        type="file"
-                        accept="video/*"
-                        className="hidden"
-                        disabled={uploadingVideo || saving}
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          await onUploadVideoFile(f);
-                        }}
-                      />
-                    </div>
-
-                    <div className="mt-3">
-                      {form.videoUrl ? (
-                        <div className="overflow-hidden rounded-xl border border-border/60 bg-black aspect-[9/16] w-full max-w-[260px]">
-                          <video
-                            src={form.videoUrl}
-                            className="h-full w-full object-cover"
-                            controls
-                            playsInline
-                            muted
-                          />
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">No video uploaded yet.</div>
-                      )}
-                    </div>
+                  {/* Small hint on mobile */}
+                  <div className="mt-2 text-xs text-muted-foreground sm:hidden">
+                    Swipe horizontally to view cover and video previews.
                   </div>
                 </div>
               </div>
@@ -489,13 +488,7 @@ export default function AdminStreams() {
             {/* Sticky footer */}
             <div className="border-t border-border/60 bg-card/95 px-5 sm:px-6 py-4">
               <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setOpen(false)}
-                  disabled={saving}
-                >
+                <Button type="button" variant="outline" className="w-full" onClick={() => setOpen(false)} disabled={saving}>
                   Cancel
                 </Button>
                 <Button type="button" className="w-full" onClick={save} disabled={!canSave}>
