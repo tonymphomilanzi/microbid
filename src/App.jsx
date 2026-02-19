@@ -46,6 +46,7 @@ import AdminFeed from "./pages/admin/AdminFeed";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEscrows from "./pages/admin/AdminEscrows";
 import AdminStreams from "./pages/admin/AdminStreams";
+import AdminPages from "./pages/admin/AdminPages"; // NEW
 
 export default function App() {
   usePresencePing();
