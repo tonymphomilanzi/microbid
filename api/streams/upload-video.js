@@ -1,7 +1,7 @@
 import { IncomingForm } from "formidable";
 import { v2 as cloudinary } from "cloudinary";
-import { prisma } from "./_lib/prisma.js";
-import { requireAuth } from "./_lib/auth.js";
+import { prisma } from "../_lib/prisma.js";
+import { requireAuth } from "../_lib/auth.js";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
