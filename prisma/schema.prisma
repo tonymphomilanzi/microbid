@@ -554,6 +554,7 @@ model AppConfig {
   escrowFeeBps   Int @default(200)
   companyBtcAddress String?
   companyBtcNetwork String?
+  companyBtcQrUrl   String? //QR CODE
   companyMomoName String?
   companyMomoNumber String?
   companyMomoCountry String?

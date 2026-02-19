@@ -62,7 +62,6 @@ async function requireAdmin(req) {
 }
 
 function appConfigModel() {
-  // If prisma client wasn't regenerated, prisma.appConfig will be undefined
   if (!prisma.appConfig) {
     const err = new Error(
       "Prisma Client is missing model AppConfig. Add AppConfig to schema.prisma, run `npx prisma generate`, then redeploy."
@@ -117,6 +116,7 @@ export default async function handler(req, res) {
 
           companyBtcAddress: strOrNull(s.companyBtcAddress) ?? null,
           companyBtcNetwork: strOrNull(s.companyBtcNetwork) ?? null,
+          companyBtcQrUrl: strOrNull(s.companyBtcQrUrl) ?? null, //  NEW
 
           companyMomoName: strOrNull(s.companyMomoName) ?? null,
           companyMomoNumber: strOrNull(s.companyMomoNumber) ?? null,
@@ -138,6 +138,7 @@ export default async function handler(req, res) {
 
           companyBtcAddress: strOrNull(s.companyBtcAddress),
           companyBtcNetwork: strOrNull(s.companyBtcNetwork),
+          companyBtcQrUrl: strOrNull(s.companyBtcQrUrl), // NEW
 
           companyMomoName: strOrNull(s.companyMomoName),
           companyMomoNumber: strOrNull(s.companyMomoNumber),

@@ -1063,7 +1063,7 @@ export default function ListingDetails() {
                   </div>
                 ) : (
                   <div className="mt-3 rounded-2xl border border-border/60 bg-muted/10 p-3 text-sm text-muted-foreground">
-                    You are the seller. You can’t bid, but you can accept the highest bid.
+                    You own this listing. You can’t bid, but you can accept the highest bid.
                   </div>
                 )}
               </div>
@@ -1117,6 +1117,7 @@ export default function ListingDetails() {
           open={buyOpen}
           onOpenChange={setBuyOpen}
           priceUsd={effectivePrice}
+          listingId={id} 
           onNext={onChoosePayment}
         />
       </div>

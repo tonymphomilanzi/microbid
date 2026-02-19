@@ -249,10 +249,16 @@ function validateManualConfigForMethod(cfg, method) {
 
 function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
   const totalUsd = (Number(totalChargeCents || 0) / 100).toFixed(2);
+
   const safe = (v) => (v && String(v).trim() ? String(v).trim() : "Not set");
+  const opt = (v) => (v && String(v).trim() ? String(v).trim() : null);
 
   if (method === "BTC") {
     return {
+      // NEW: QR code URL (optional)
+      // If not set, frontend can show "QR not set yet" placeholder
+      qrUrl: opt(cfg?.companyBtcQrUrl),
+
       lines: [
         `Send exactly $${totalUsd} worth of BTC to the address below.`,
         `Reference code: ${escrowId}. Keep it for proof.`,
@@ -266,6 +272,7 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 
   if (method === "MOMO") {
     return {
+      qrUrl: null,
       lines: [
         `Send exactly $${totalUsd} (or equivalent) to the Mobile Money details below.`,
         `Use reference code: ${escrowId} as the payment reference.`,
@@ -280,6 +287,7 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 
   if (method === "WU") {
     return {
+      qrUrl: null,
       lines: [
         `Send exactly $${totalUsd} via Western Union.`,
         `Use reference code: ${escrowId} (if possible).`,
@@ -294,6 +302,7 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 
   // BANK
   return {
+    qrUrl: null,
     lines: [
       `Send exactly $${totalUsd} via bank transfer.`,
       `Put reference code: ${escrowId} in the transfer memo/reference.`,

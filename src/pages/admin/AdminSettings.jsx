@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { adminService } from "../../services/admin.service";
+import { listingsService } from "../../services/listings.service"; // use existing authenticated uploader
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
@@ -18,6 +19,7 @@ export default function AdminSettings() {
 
     companyBtcAddress: "",
     companyBtcNetwork: "",
+    companyBtcQrUrl: "", // NEW
 
     companyMomoName: "",
     companyMomoNumber: "",
@@ -34,6 +36,9 @@ export default function AdminSettings() {
     companyBankCountry: "",
   });
 
+  const [btcQrUploading, setBtcQrUploading] = useState(false);
+  const btcQrInputRef = useRef(null);
+
   async function load() {
     setError("");
     setLoading(true);
@@ -48,6 +53,7 @@ export default function AdminSettings() {
 
         companyBtcAddress: s?.companyBtcAddress ?? "",
         companyBtcNetwork: s?.companyBtcNetwork ?? "",
+        companyBtcQrUrl: s?.companyBtcQrUrl ?? "",
 
         companyMomoName: s?.companyMomoName ?? "",
         companyMomoNumber: s?.companyMomoNumber ?? "",
@@ -77,7 +83,7 @@ export default function AdminSettings() {
   const feePercent = useMemo(() => {
     const bps = Number(draft.escrowFeeBps ?? 0);
     if (!Number.isFinite(bps)) return "—";
-    return (bps / 100).toFixed(2); // 200 bps -> 2.00%
+    return (bps / 100).toFixed(2);
   }, [draft.escrowFeeBps]);
 
   const hasChanges = useMemo(() => {
@@ -96,13 +102,13 @@ export default function AdminSettings() {
     setSaving(true);
     setError("");
     try {
-      // PATCH /admin/settings
       await adminService.updateSettings({
         escrowAgentUid: draft.escrowAgentUid,
         escrowFeeBps: Number(draft.escrowFeeBps),
 
         companyBtcAddress: draft.companyBtcAddress,
         companyBtcNetwork: draft.companyBtcNetwork,
+        companyBtcQrUrl: draft.companyBtcQrUrl, // NEW
 
         companyMomoName: draft.companyMomoName,
         companyMomoNumber: draft.companyMomoNumber,
@@ -127,9 +133,40 @@ export default function AdminSettings() {
     }
   }
 
-  if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+  async function onPickBtcQrFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file for the QR code.");
+      e.target.value = "";
+      return;
+    }
+
+    setError("");
+    setBtcQrUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await listingsService.uploadImage(fd); // calls POST /upload
+      const url = res?.url;
+
+      if (!url) throw new Error("Upload succeeded but missing URL");
+      setDraft((d) => ({ ...d, companyBtcQrUrl: url }));
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || "Failed to upload QR code");
+    } finally {
+      setBtcQrUploading(false);
+      e.target.value = "";
+    }
   }
+
+  function removeBtcQr() {
+    setDraft((d) => ({ ...d, companyBtcQrUrl: "" }));
+  }
+
+  if (loading) return <div className="text-sm text-muted-foreground">Loading…</div>;
 
   return (
     <div className="space-y-4">
@@ -165,19 +202,6 @@ export default function AdminSettings() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-          {/** *  <div>
-                
-              <div className="text-xs text-muted-foreground mb-1">Escrow Agent UID</div>
-              <Input
-                placeholder='e.g. "SYSTEM" or admin uid'
-                value={draft.escrowAgentUid}
-                onChange={(e) => setDraft((d) => ({ ...d, escrowAgentUid: e.target.value }))}
-              />
-              <div className="mt-1 text-xs text-muted-foreground">
-                Stored in DB. Used to fill <code>escrowAgentId</code> on new transactions.
-              </div>
-            </div>*/} 
-
             <div>
               <div className="text-xs text-muted-foreground mb-1">Escrow Fee (bps)</div>
               <Input
@@ -186,9 +210,7 @@ export default function AdminSettings() {
                 value={draft.escrowFeeBps}
                 onChange={(e) => setDraft((d) => ({ ...d, escrowFeeBps: e.target.value }))}
               />
-              <div className="mt-1 text-xs text-muted-foreground">
-                200 bps = 2%. (0–2000 allowed)
-              </div>
+              <div className="mt-1 text-xs text-muted-foreground">200 bps = 2%. (0–2000 allowed)</div>
             </div>
           </div>
         </CardContent>
@@ -206,8 +228,10 @@ export default function AdminSettings() {
 
           <Separator className="bg-border/60" />
 
+          {/* Bitcoin */}
           <div className="space-y-2">
             <div className="font-medium text-sm">Bitcoin</div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 placeholder="BTC address"
@@ -220,10 +244,71 @@ export default function AdminSettings() {
                 onChange={(e) => setDraft((d) => ({ ...d, companyBtcNetwork: e.target.value }))}
               />
             </div>
+
+            {/* ✅ BTC QR Code uploader */}
+            <div className="mt-3 rounded-xl border border-border/60 bg-muted/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">BTC QR code</div>
+                  <div className="text-xs text-muted-foreground">
+                    Upload a QR image for the BTC address (shown on checkout).
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {draft.companyBtcQrUrl ? (
+                    <Button variant="outline" size="sm" onClick={removeBtcQr} disabled={btcQrUploading}>
+                      Remove
+                    </Button>
+                  ) : null}
+
+                  <Button
+                    size="sm"
+                    disabled={btcQrUploading}
+                    onClick={() => btcQrInputRef.current?.click()}
+                  >
+                    {btcQrUploading ? "Uploading..." : draft.companyBtcQrUrl ? "Replace" : "Upload QR"}
+                  </Button>
+
+                  <input
+                    ref={btcQrInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onPickBtcQrFile}
+                    disabled={btcQrUploading}
+                  />
+                </div>
+              </div>
+
+              {draft.companyBtcQrUrl ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-[160px_1fr]">
+                  <div className="overflow-hidden rounded-lg border border-border/60 bg-background">
+                    <img
+                      src={draft.companyBtcQrUrl}
+                      alt="BTC QR code"
+                      className="h-[160px] w-[160px] object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">QR image URL</div>
+                    <Input value={draft.companyBtcQrUrl} readOnly />
+                    <div className="text-xs text-muted-foreground">
+                      Make sure the QR matches the BTC address above.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 text-xs text-muted-foreground">No QR uploaded yet.</div>
+              )}
+            </div>
           </div>
 
           <Separator className="bg-border/60" />
 
+          {/* MoMo */}
           <div className="space-y-2">
             <div className="font-medium text-sm">Mobile Money (MoMo)</div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -247,6 +332,7 @@ export default function AdminSettings() {
 
           <Separator className="bg-border/60" />
 
+          {/* WU */}
           <div className="space-y-2">
             <div className="font-medium text-sm">Western Union</div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -270,6 +356,7 @@ export default function AdminSettings() {
 
           <Separator className="bg-border/60" />
 
+          {/* Bank */}
           <div className="space-y-2">
             <div className="font-medium text-sm">Bank transfer</div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -307,16 +394,16 @@ export default function AdminSettings() {
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"
-          disabled={!hasChanges || saving}
+          disabled={!hasChanges || saving || btcQrUploading}
           onClick={() => {
-            // reset draft to last loaded settings
             const s = settings || {};
             setDraft({
-              //escrowAgentUid: s?.escrowAgentUid ?? "",
+              escrowAgentUid: s?.escrowAgentUid ?? "",
               escrowFeeBps: s?.escrowFeeBps ?? 200,
 
               companyBtcAddress: s?.companyBtcAddress ?? "",
               companyBtcNetwork: s?.companyBtcNetwork ?? "",
+              companyBtcQrUrl: s?.companyBtcQrUrl ?? "",
 
               companyMomoName: s?.companyMomoName ?? "",
               companyMomoNumber: s?.companyMomoNumber ?? "",
@@ -337,7 +424,7 @@ export default function AdminSettings() {
           Reset
         </Button>
 
-        <Button disabled={!hasChanges || saving} onClick={save}>
+        <Button disabled={!hasChanges || saving || btcQrUploading} onClick={save}>
           {saving ? "Saving..." : "Save settings"}
         </Button>
       </div>

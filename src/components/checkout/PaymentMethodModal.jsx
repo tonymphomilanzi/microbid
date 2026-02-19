@@ -1,9 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { cn } from "../../lib/utils"; // if you don't have cn(), remove cn usage and join strings manually
-import { Bitcoin, Landmark, Smartphone, Globe, ArrowRight } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { listingsService } from "../../services/listings.service";
+import {
+  Bitcoin,
+  Landmark,
+  Smartphone,
+  Globe,
+  ArrowRight,
+  Copy,
+  Loader2,
+} from "lucide-react";
 
 const METHODS = [
   {
@@ -36,16 +45,104 @@ const METHODS = [
   },
 ];
 
-export default function PaymentMethodModal({ open, onOpenChange, onNext, priceUsd }) {
+function getField(fields, label) {
+  const hit = (fields || []).find(
+    (f) => String(f?.label || "").toLowerCase() === String(label).toLowerCase()
+  );
+  return hit?.value || "";
+}
+
+export default function PaymentMethodModal({ open, onOpenChange, onNext, priceUsd, listingId }) {
   const [selected, setSelected] = useState(null);
 
   const feeBps = 200; // 2% for now (admin-configurable later from backend)
-  const feeUsd = useMemo(() => Math.round(((Number(priceUsd) || 0) * feeBps) / 10000), [priceUsd]);
-  const totalUsd = useMemo(() => (Number(priceUsd) || 0) + (feeUsd || 0), [priceUsd, feeUsd]);
+  const feeUsd = useMemo(
+    () => Math.round(((Number(priceUsd) || 0) * feeBps) / 10000),
+    [priceUsd]
+  );
+  const totalUsd = useMemo(
+    () => (Number(priceUsd) || 0) + (feeUsd || 0),
+    [priceUsd, feeUsd]
+  );
+
+  // BTC preview (Binance-style)
+  const [btcLoading, setBtcLoading] = useState(false);
+  const [btcError, setBtcError] = useState("");
+  const [btcInstructions, setBtcInstructions] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const btcAddress = useMemo(
+    () => getField(btcInstructions?.fields, "BTC Address"),
+    [btcInstructions]
+  );
+  const btcNetwork = useMemo(
+    () => getField(btcInstructions?.fields, "Network"),
+    [btcInstructions]
+  );
+  const btcQrUrl = btcInstructions?.qrUrl || null;
+
+  // Reset modal state when closed
+  useEffect(() => {
+    if (!open) {
+      setSelected(null);
+      setBtcLoading(false);
+      setBtcError("");
+      setBtcInstructions(null);
+      setCopied(false);
+    }
+  }, [open]);
+
+  // Load BTC instructions when BTC is selected
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBtc() {
+      if (!open) return;
+      if (selected !== "BTC") return;
+
+      // Already loaded
+      if (btcInstructions || btcLoading) return;
+
+      if (!listingId) {
+        setBtcError("Missing listingId. Cannot load BTC QR preview.");
+        return;
+      }
+
+      setBtcError("");
+      setBtcLoading(true);
+      try {
+        const res = await listingsService.startEscrow(listingId, "BTC");
+        if (cancelled) return;
+
+        setBtcInstructions(res?.instructions || null);
+      } catch (e) {
+        if (cancelled) return;
+        setBtcError(e?.response?.data?.message || e?.message || "Failed to load BTC details.");
+      } finally {
+        if (!cancelled) setBtcLoading(false);
+      }
+    }
+
+    loadBtc();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selected, listingId, btcInstructions, btcLoading]);
+
+  async function copyToClipboard(text) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // ignore (optional: toast)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={(v) => onOpenChange?.(v)}>
-      <DialogContent className="sm:max-w-[560px] border-border/60 bg-card/80 backdrop-blur">
+      <DialogContent className="sm:max-w-[620px] border-border/60 bg-card/80 backdrop-blur">
         <DialogHeader>
           <DialogTitle className="text-lg">Choose payment method</DialogTitle>
           <div className="text-sm text-muted-foreground">
@@ -54,6 +151,7 @@ export default function PaymentMethodModal({ open, onOpenChange, onNext, priceUs
         </DialogHeader>
 
         <div className="mt-2 grid gap-3">
+          {/* Summary */}
           <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">Listing price</div>
@@ -70,6 +168,7 @@ export default function PaymentMethodModal({ open, onOpenChange, onNext, priceUs
             </div>
           </div>
 
+          {/* Methods */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {METHODS.map((m) => {
               const Icon = m.icon;
@@ -111,15 +210,94 @@ export default function PaymentMethodModal({ open, onOpenChange, onNext, priceUs
             })}
           </div>
 
+          {/* ✅ Binance-style BTC QR section */}
+          {selected === "BTC" ? (
+            <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Scan to pay</div>
+                  <div className="text-xs text-muted-foreground">
+                    Scan the QR or copy the BTC address.
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {btcNetwork ? (
+                    <Badge variant="secondary" className="rounded-full bg-muted/30">
+                      {btcNetwork}
+                    </Badge>
+                  ) : null}
+                  <Badge variant="outline" className="rounded-full border-border/60 bg-muted/10 text-muted-foreground">
+                    Bitcoin
+                  </Badge>
+                </div>
+              </div>
+
+              {btcLoading ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading BTC details…
+                </div>
+              ) : btcError ? (
+                <div className="mt-4 text-sm text-destructive">{btcError}</div>
+              ) : (
+                <div className="mt-4 grid gap-4 sm:grid-cols-[180px_1fr] sm:items-start">
+                  {/* QR */}
+                  <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
+                    {btcQrUrl ? (
+                      <img
+                        src={btcQrUrl}
+                        alt="BTC payment QR code"
+                        className="h-[180px] w-[180px] object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-[180px] w-[180px] items-center justify-center bg-muted/10 p-3 text-center text-xs text-muted-foreground">
+                        QR not set yet.
+                        <br />
+                        (Admin can upload in Settings)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Address */}
+                  <div className="min-w-0 space-y-3">
+                    <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-muted-foreground">BTC Address</div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-2"
+                          disabled={!btcAddress}
+                          onClick={() => copyToClipboard(btcAddress)}
+                        >
+                          <Copy className="h-4 w-4" />
+                          {copied ? "Copied" : "Copy"}
+                        </Button>
+                      </div>
+
+                      <code className="mt-2 block text-sm font-medium break-all text-foreground">
+                        {btcAddress || "—"}
+                      </code>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground leading-5">
+                      After you continue, you’ll get a reference code to include with your payment proof.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {/* Actions */}
           <div className="mt-2 flex items-center justify-between gap-3">
             <Button variant="outline" onClick={() => onOpenChange?.(false)} className="w-full">
               Cancel
             </Button>
-            <Button
-              onClick={() => selected && onNext?.(selected)}
-              disabled={!selected}
-              className="w-full"
-            >
+            <Button onClick={() => selected && onNext?.(selected)} disabled={!selected} className="w-full">
               Next
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
