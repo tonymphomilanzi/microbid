@@ -41,6 +41,13 @@ function statusTone(status) {
   return "border-border/60 bg-muted/10 text-muted-foreground";
 }
 
+function fieldValue(fields, label) {
+  const hit = (fields || []).find(
+    (f) => String(f?.label || "").toLowerCase() === String(label).toLowerCase()
+  );
+  return hit?.value || "";
+}
+
 export default function CheckoutPage() {
   const { listingId } = useParams();
   const [params] = useSearchParams();
@@ -114,6 +121,11 @@ export default function CheckoutPage() {
   const amountFee = useMemo(() => escrow?.feeCents, [escrow]);
   const amountTotal = useMemo(() => escrow?.totalChargeCents, [escrow]);
 
+  const isBtc = method === "BTC";
+  const btcAddress = useMemo(() => fieldValue(instructions?.fields, "BTC Address"), [instructions]);
+  const btcNetwork = useMemo(() => fieldValue(instructions?.fields, "Network"), [instructions]);
+  const btcQrUrl = instructions?.qrUrl || null;
+
   async function copy(v, label) {
     try {
       await navigator.clipboard.writeText(String(v || ""));
@@ -142,7 +154,6 @@ export default function CheckoutPage() {
         note: note.trim() ? note.trim() : null,
       });
 
-      // update local status
       setEscrow(res.escrow);
 
       setPaidOpen(false);
@@ -151,7 +162,6 @@ export default function CheckoutPage() {
         description: "We received your payment details. Our team will verify and continue the transfer.",
       });
 
-      // reset form for next time
       setReference("");
       setProofUrl("");
       setNote("");
@@ -302,6 +312,77 @@ export default function CheckoutPage() {
                       </div>
                     ))}
 
+                    {/* ✅ BTC QR code panel (Binance-style) */}
+                    {isBtc ? (
+                      <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">Scan to pay</div>
+                            <div className="text-xs text-muted-foreground">
+                              Scan the QR or copy the BTC address.
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {btcNetwork ? (
+                              <Badge variant="secondary" className="rounded-full bg-muted/30">
+                                {btcNetwork}
+                              </Badge>
+                            ) : null}
+                            <Badge variant="outline" className="rounded-full border-border/60 bg-muted/10 text-muted-foreground">
+                              Bitcoin
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 sm:grid-cols-[180px_1fr] sm:items-start">
+                          <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
+                            {btcQrUrl ? (
+                              <a href={btcQrUrl} target="_blank" rel="noreferrer" title="Open QR image">
+                                <img
+                                  src={btcQrUrl}
+                                  alt="BTC payment QR code"
+                                  className="h-[180px] w-[180px] object-cover"
+                                  loading="lazy"
+                                />
+                              </a>
+                            ) : (
+                              <div className="flex h-[180px] w-[180px] items-center justify-center bg-muted/10 p-3 text-center text-xs text-muted-foreground">
+                                QR not set yet.
+                                <br />
+                                (Admin can upload in Settings)
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 space-y-3">
+                            <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs text-muted-foreground">BTC Address</div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-2"
+                                  disabled={!btcAddress}
+                                  onClick={() => copy(btcAddress, "BTC Address")}
+                                >
+                                  <Copy className="h-4 w-4" />
+                                  Copy
+                                </Button>
+                              </div>
+                              <div className="mt-2 font-mono text-sm font-semibold break-all">
+                                {btcAddress || "—"}
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-muted-foreground leading-5">
+                              Make sure you are sending on the correct network. Sending to the wrong network may result in loss of funds.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {instructions.fields?.length ? (
                       <div className="grid gap-3 sm:grid-cols-2">
                         {instructions.fields.map((f) => (
@@ -309,7 +390,12 @@ export default function CheckoutPage() {
                             <div className="text-xs text-muted-foreground">{f.label}</div>
                             <div className="mt-1 flex items-center justify-between gap-2">
                               <div className="font-mono text-sm font-semibold break-all">{f.value}</div>
-                              <Button variant="outline" size="sm" className="gap-2" onClick={() => copy(f.value, f.label)}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => copy(f.value, f.label)}
+                              >
                                 <Copy className="h-4 w-4" />
                                 Copy
                               </Button>
@@ -413,12 +499,7 @@ export default function CheckoutPage() {
             </div>
 
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setPaidOpen(false)}
-                disabled={submittingPaid}
-              >
+              <Button variant="outline" className="w-full" onClick={() => setPaidOpen(false)} disabled={submittingPaid}>
                 Cancel
               </Button>
               <Button className="w-full" onClick={submitPaid} disabled={submittingPaid}>
