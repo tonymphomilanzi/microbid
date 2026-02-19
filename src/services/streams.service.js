@@ -44,7 +44,7 @@ export const streamsService = {
 
   // This GET also triggers view recording (best-effort) on backend
   getStream: (id) =>
-    api.get(`/streams/${id}`, withDeviceHeader()).then((r) => r.data),
+  api.get("/streams", withDeviceHeader({ params: { id } })).then((r) => r.data),
 
   // -----------------------------
   // Upload helpers (admin)

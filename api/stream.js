@@ -1,8 +1,12 @@
-import { prisma } from "../_lib/prisma.js";
-import { requireAuth } from "../_lib/auth.js";
+import { prisma } from "./_lib/prisma.js";
+import { requireAuth } from "./_lib/auth.js";
 
 function send(res, status, json) {
   return res.status(status).json(json);
+}
+
+function qv(v) {
+  return Array.isArray(v) ? v[0] : v;
 }
 
 function getQuery(req) {
@@ -46,53 +50,31 @@ async function recordStreamViewTx(tx, streamId, uid, deviceId) {
     });
     return true;
   } catch (e) {
-    if (e?.code === "P2002") return false; // already viewed
+    // Prisma unique violation => already viewed
+    if (e?.code === "P2002") return false;
     throw e;
   }
 }
 
 export default async function handler(req, res) {
   try {
-    const partsRaw = req.query?.path;
-    const parts = (Array.isArray(partsRaw) ? partsRaw : partsRaw ? [partsRaw] : [])
-      .map(String)
-      .filter(Boolean);
-
-    // GET /api/streams  (list)
-    if (req.method === "GET" && parts.length === 0) {
-      const q = getQuery(req);
-      const take = Math.min(60, Math.max(1, Number(q.take || 24)));
-      const cursor = q.cursor ? String(q.cursor) : null;
-
-      const rows = await prisma.streamVideo.findMany({
-        where: { isActive: true },
-        orderBy: { createdAt: "desc" },
-        take: take + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        select: {
-          id: true,
-          title: true,
-          caption: true,
-          coverImageUrl: true,
-          videoUrl: true,
-          viewsCount: true,
-          createdAt: true,
-        },
-      });
-
-      const hasMore = rows.length > take;
-      const items = hasMore ? rows.slice(0, take) : rows;
-      const nextCursor = hasMore ? items[items.length - 1]?.id : null;
-
-      return send(res, 200, { streams: items, nextCursor });
+    if (req.method !== "GET") {
+      res.setHeader("Allow", "GET");
+      return send(res, 405, { message: "Method not allowed" });
     }
 
-    // GET /api/streams/:id  (watch + record view)
-    if (req.method === "GET" && parts.length === 1) {
-      const id = parts[0];
+    const query = getQuery(req);
+
+    // -----------------------------
+    // GET /api/streams?id=<id> (single + record view)
+    // -----------------------------
+    const id = qv(query.id);
+    if (id) {
+      const uid = await optionalAuthUid(req);
+      const deviceId = deviceIdFrom(req);
 
       const stream = await prisma.streamVideo.findFirst({
-        where: { id, isActive: true },
+        where: { id: String(id), isActive: true },
         select: {
           id: true,
           title: true,
@@ -106,20 +88,43 @@ export default async function handler(req, res) {
 
       if (!stream) return send(res, 404, { message: "Not found" });
 
-      const uid = await optionalAuthUid(req);
-      const deviceId = deviceIdFrom(req);
-
       // best-effort view record (don’t block response)
       if (uid || deviceId) {
-        prisma.$transaction((tx) => recordStreamViewTx(tx, id, uid, deviceId)).catch(() => {});
+        prisma.$transaction((tx) => recordStreamViewTx(tx, String(id), uid, deviceId)).catch(() => {});
       }
 
       return send(res, 200, { stream });
     }
 
-    res.setHeader("Allow", "GET");
-    return send(res, 405, { message: "Method not allowed" });
+    // -----------------------------
+    // GET /api/streams?take=24&cursor=...
+    // -----------------------------
+    const take = Math.min(60, Math.max(1, Number(qv(query.take) || 24)));
+    const cursor = qv(query.cursor) ? String(qv(query.cursor)) : null;
+
+    const rows = await prisma.streamVideo.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: "desc" },
+      take: take + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        title: true,
+        caption: true,
+        coverImageUrl: true,
+        videoUrl: true,
+        viewsCount: true,
+        createdAt: true,
+      },
+    });
+
+    const hasMore = rows.length > take;
+    const streams = hasMore ? rows.slice(0, take) : rows;
+    const nextCursor = hasMore ? streams[streams.length - 1]?.id : null;
+
+    return send(res, 200, { streams, nextCursor });
   } catch (e) {
+    console.error("API /streams crashed:", e);
     return send(res, e.statusCode ?? 500, { message: e.message ?? "Error" });
   }
 }
