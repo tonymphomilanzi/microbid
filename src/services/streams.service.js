@@ -55,12 +55,34 @@ uploadCoverImage: (file) => {
   return api.post("/upload", fd, withDeviceHeader()).then((r) => r.data);
 },
 
-uploadVideo: (file) => {
+uploadVideo: async (file) => {
+  // 1) request signature (admin-only)
+  const sign = await api
+    .get("/upload", {
+      params: { intent: "sign", resourceType: "video", folder: "mikrobid-streams" },
+    })
+    .then((r) => r.data);
+
+  const { cloudName, apiKey, timestamp, signature, folder } = sign;
+
+  // 2) upload directly to Cloudinary
   const fd = new FormData();
   fd.append("file", file);
-  return api.post("/upload", fd, withDeviceHeader()).then((r) => r.data); //  /upload (not /upload-video)
-},
+  fd.append("api_key", apiKey);
+  fd.append("timestamp", String(timestamp));
+  fd.append("signature", signature);
+  fd.append("folder", folder);
 
+  const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+    method: "POST",
+    body: fd,
+  });
+
+  const data = await upRes.json().catch(() => ({}));
+  if (!upRes.ok) throw new Error(data?.error?.message || "Cloudinary upload failed");
+
+  return { url: data.secure_url };
+},
   // -----------------------------
   // Admin CRUD
   // -----------------------------
