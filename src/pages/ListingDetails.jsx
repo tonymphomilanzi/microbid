@@ -61,6 +61,29 @@ function moneyOrDash(v) {
   return `$${n}`;
 }
 
+
+function VerifiedCheckWithOnline({ online }) {
+  return (
+    <span
+      className="relative inline-flex h-4 w-4"
+      title={online ? "Verified • Online" : "Verified • Offline"}
+    >
+      <BadgeCheck className="h-4 w-4 text-primary" />
+      {/* Dot centered inside the check icon */}
+      <span className="absolute inset-0 grid place-items-center">
+        <span
+          className={[
+            "h-1.5 w-1.5 rounded-full",
+            "ring-2 ring-background", // ensures visibility on any background
+            online ? "bg-emerald-400" : "bg-muted-foreground/40",
+          ].join(" ")}
+        />
+      </span>
+    </span>
+  );
+}
+
+
 export default function ListingDetails() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -666,21 +689,23 @@ export default function ListingDetails() {
               <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Seller</div>
-                  <div className="mt-1 flex items-center gap-2 min-w-0">
-                    <UserAvatar
-                      src={listing?.seller?.avatarUrl}
-                      alt={username ? `@${username}` : "Seller"}
-                      size={32}
-                      online={isOnline(listing?.seller?.lastActiveAt)}
-                    />
-                    <SellerHandle username={username} />
-                    {verified ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-primary" title="Verified seller">
-                        <BadgeCheck className="h-4 w-4" />
-                        Verified
-                      </span>
-                    ) : null}
-                  </div>
+                <div className="mt-1 flex items-center gap-2 min-w-0">
+  <UserAvatar
+    src={listing?.seller?.avatarUrl}
+    alt={username ? `@${username}` : "Seller"}
+    size={32}
+    online={!verified && isOnline(listing?.seller?.lastActiveAt)} // only show dot if NOT verified
+  />
+  <div className="flex min-w-0 items-center gap-1">
+    <SellerHandle username={username} />
+    {verified ? (
+      <div className="flex items-center gap-1.5 ml-1">
+        <VerifiedCheckWithOnline online={isOnline(listing?.seller?.lastActiveAt)} />
+        <span className="text-xs font-medium text-primary">Verified</span>
+      </div>
+    ) : null}
+  </div>
+</div>
                 </CardContent>
               </Card>
             </div>
