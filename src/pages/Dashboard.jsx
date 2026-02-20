@@ -22,6 +22,10 @@ import {
   MessageCircle,
   LogOut,
   Settings,
+  Sparkles,
+  TrendingUp,
+  Crown,
+  Zap,
 } from "lucide-react";
 
 function StatusBadge({ status }) {
@@ -33,6 +37,69 @@ function StatusBadge({ status }) {
   return (
     <Badge variant="outline" className={map[status] ?? ""}>
       {status}
+    </Badge>
+  );
+}
+
+// Helper to format limit display
+function formatLimit(value) {
+  if (value === null || value === undefined) return "—";
+  if (value < 0) return "Unlimited";
+  return String(value);
+}
+
+// Helper to check if unlimited
+function isUnlimited(value) {
+  return typeof value === "number" && value < 0;
+}
+
+// Progress bar for usage
+function UsageProgress({ used, limit, label }) {
+  const unlimited = isUnlimited(limit);
+  const percent = unlimited ? 0 : limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  const atLimit = !unlimited && limit > 0 && used >= limit;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={atLimit ? "text-red-400 font-semibold" : "text-foreground"}>
+          {used} / {formatLimit(limit)}
+        </span>
+      </div>
+      {!unlimited && limit > 0 ? (
+        <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+          <div
+            className={[
+              "h-full rounded-full transition-all",
+              atLimit ? "bg-red-500" : percent > 80 ? "bg-yellow-500" : "bg-primary",
+            ].join(" ")}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      ) : (
+        <div className="h-1.5 w-full rounded-full bg-gradient-to-r from-primary/30 via-primary/50 to-primary/30" />
+      )}
+    </div>
+  );
+}
+
+// Plan badge with icon
+function PlanBadge({ name }) {
+  const config = {
+    FREE: { color: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30", icon: Zap },
+    PRO: { color: "bg-blue-500/10 text-blue-400 border-blue-500/30", icon: TrendingUp },
+    VIP: { color: "bg-amber-500/10 text-amber-400 border-amber-500/30", icon: Crown },
+    ADMIN: { color: "bg-purple-500/10 text-purple-400 border-purple-500/30", icon: Sparkles },
+  };
+
+  const cfg = config[name?.toUpperCase()] || config.FREE;
+  const Icon = cfg.icon;
+
+  return (
+    <Badge variant="outline" className={`${cfg.color} gap-1`}>
+      <Icon className="h-3 w-3" />
+      {name}
     </Badge>
   );
 }
@@ -191,6 +258,14 @@ export default function Dashboard() {
 
   const defaultAvatar = "/avatar-default.png";
 
+  // Derived: check if pending upgrade request matches a different plan than current
+  const pendingPlanName = pendingUpgradeRequest?.requestedPlan;
+  const pendingMatchesCurrent =
+    pendingPlanName && currentPlan?.name?.toUpperCase() === pendingPlanName?.toUpperCase();
+
+  // If pending matches current, the upgrade was approved (show success)
+  const upgradeApproved = pendingUpgradeRequest && pendingMatchesCurrent;
+
   return (
     <PageContainer>
       <div className="py-8 space-y-6">
@@ -251,41 +326,97 @@ export default function Dashboard() {
           </div>
         ) : null}
 
-        {/* Plan */}
+        {/* Upgrade approved banner */}
+        {upgradeApproved ? (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-400" />
+              <div className="text-sm font-semibold text-emerald-400">
+                Upgrade approved! You're now on {currentPlan?.name}
+              </div>
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Your upgrade request to {pendingPlanName} has been approved. Enjoy your new features!
+            </div>
+          </div>
+        ) : null}
+
+        {/* Plan & Usage Card */}
         {currentPlan ? (
-          <div className="rounded-xl border border-border/60 bg-card/60 p-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-sm font-semibold">
-                  Current plan: {currentPlan.name} • {currentPlan.billingType}
+          <Card className="border-border/60 bg-card/60">
+            <CardContent className="p-5 space-y-4">
+              {/* Plan header */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground">Current plan:</span>
+                    <PlanBadge name={currentPlan.name} />
+                    <Badge variant="outline" className="text-xs">
+                      {currentPlan.billingType}
+                    </Badge>
+                  </div>
+
+                  {currentPlan.tagline ? (
+                    <div className="text-xs text-muted-foreground">{currentPlan.tagline}</div>
+                  ) : null}
                 </div>
 
-                <div className="mt-1 text-sm text-muted-foreground">
-                  Listings/month: {currentPlan.features?.listingsPerMonth ?? "—"} • Conversations/month:{" "}
-                  {currentPlan.features?.conversationsPerMonth ?? "—"}
-                </div>
-
-                {usage ? (
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    This month usage: listings {usage.listingsCreated ?? 0} /{" "}
-                    {currentPlan.features?.listingsPerMonth ?? "—"} • conversations{" "}
-                    {usage.conversationsStarted ?? 0} /{" "}
-                    {currentPlan.features?.conversationsPerMonth ?? "—"}
-                  </div>
-                ) : null}
-
-                {pendingUpgradeRequest ? (
-                  <div className="mt-2 text-xs text-primary">
-                    Upgrade request pending: {pendingUpgradeRequest.requestedPlan}
-                  </div>
+                {currentPlan.name !== "ADMIN" && currentPlan.name !== "VIP" ? (
+                  <Button asChild variant="outline" size="sm" className="gap-2">
+                    <Link to="/pricing">
+                      <TrendingUp className="h-4 w-4" />
+                      Upgrade
+                    </Link>
+                  </Button>
                 ) : null}
               </div>
 
-              <Button asChild variant="outline">
-                <Link to="/pricing">Upgrade</Link>
-              </Button>
-            </div>
-          </div>
+              {/* Usage tracking */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <UsageProgress
+                  used={usage?.listingsCreated ?? 0}
+                  limit={currentPlan.features?.listingsPerMonth}
+                  label="Listings created this month"
+                />
+                <UsageProgress
+                  used={usage?.conversationsStarted ?? 0}
+                  limit={currentPlan.features?.conversationsPerMonth}
+                  label="New conversations this month"
+                />
+              </div>
+
+              {/* Plan limits summary */}
+              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                <div>
+                  <span className="font-medium text-foreground">
+                    {formatLimit(currentPlan.features?.listingsPerMonth)}
+                  </span>{" "}
+                  listings/month
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">
+                    {formatLimit(currentPlan.features?.conversationsPerMonth)}
+                  </span>{" "}
+                  new conversations/month
+                </div>
+              </div>
+
+              {/* Pending upgrade request (only if NOT approved yet) */}
+              {pendingUpgradeRequest && !pendingMatchesCurrent ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                    <span className="text-sm font-medium text-primary">
+                      Upgrade request pending: {pendingUpgradeRequest.requestedPlan}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Your request is being reviewed. You'll be notified when it's approved.
+                  </div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
         ) : null}
 
         {error ? (
@@ -375,6 +506,41 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Subscription info in settings */}
+            {currentPlan ? (
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="p-5 space-y-3">
+                  <div className="text-sm font-semibold">Subscription</div>
+
+                  <div className="flex items-center gap-3">
+                    <PlanBadge name={currentPlan.name} />
+                    <span className="text-sm text-muted-foreground">{currentPlan.billingType}</span>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>
+                      Listings per month:{" "}
+                      <span className="text-foreground font-medium">
+                        {formatLimit(currentPlan.features?.listingsPerMonth)}
+                      </span>
+                    </div>
+                    <div>
+                      New conversations per month:{" "}
+                      <span className="text-foreground font-medium">
+                        {formatLimit(currentPlan.features?.conversationsPerMonth)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {currentPlan.name !== "ADMIN" && currentPlan.name !== "VIP" ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/pricing">View plans</Link>
+                    </Button>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
           </TabsContent>
 
           {/* LISTINGS */}

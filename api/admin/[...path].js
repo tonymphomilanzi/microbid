@@ -511,6 +511,12 @@ export default async function handler(req, res) {
           }
         }
 
+        // Clear any pending upgrade request for this user (since we just approved/changed tier)
+await prisma.upgradeRequest.updateMany({
+  where: { userId: id, status: "PENDING" },
+  data: { status: "APPROVED", decidedAt: new Date(), decidedBy: adminUid },
+});
+
         return res.status(200).json({ user });
       }
 
