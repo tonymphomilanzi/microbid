@@ -49,6 +49,7 @@ import AdminStreams from "./pages/admin/AdminStreams";
 import AdminPages from "./pages/admin/AdminPages"; // NEW
 import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import SubscriptionCheckout from "./pages/SubscriptionCheckout";
+import AdminSubscriptionPayments from "./pages/admin/AdminSubscriptionPayments"; // NEW
 
 
 export default function App() {
