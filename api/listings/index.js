@@ -86,7 +86,7 @@ function toNonNegativeIntOrNullOrUndefined(v) {
   return int;
 }
 
-// NEW: optional integer percent (0..90) or null/undefined
+// optional integer percent (0..90) or null/undefined
 function toIntPercentOrNullOrUndefined(v) {
   if (v === undefined) return undefined; // don't touch (important for edits)
   if (v === null || v === "") return null;
@@ -118,7 +118,9 @@ function getIdempotencyKey(req, body) {
     req.headers["x-idempotency-key"] ||
     req.headers["Idempotency-Key"];
 
-  const k = (typeof headerKey === "string" && headerKey.trim()) || body?.idempotencyKey;
+  const k =
+    (typeof headerKey === "string" && headerKey.trim()) ||
+    body?.idempotencyKey;
   return typeof k === "string" && k.trim() ? k.trim() : null;
 }
 
@@ -139,7 +141,12 @@ async function listingAlreadySoldOrLocked(listingId) {
   });
 
   if (locked) {
-    return { blocked: true, reason: locked.status, buyerId: locked.buyerId, escrowId: locked.id };
+    return {
+      blocked: true,
+      reason: locked.status,
+      buyerId: locked.buyerId,
+      escrowId: locked.id,
+    };
   }
   return { blocked: false };
 }
@@ -168,7 +175,10 @@ function checkRateLimitOr429(req, res, { scope, limit, windowMs }) {
   const r = rateLimit({ key, limit, windowMs });
 
   if (!r.allowed) {
-    res.setHeader("Retry-After", String(Math.ceil((r.resetAt - Date.now()) / 1000)));
+    res.setHeader(
+      "Retry-After",
+      String(Math.ceil((r.resetAt - Date.now()) / 1000))
+    );
     send(res, 429, { message: "Too many requests. Please slow down." });
     return false;
   }
@@ -217,7 +227,8 @@ function requireAppConfigModel() {
 
 async function getAppConfigCached() {
   const now = Date.now();
-  if (APP_CONFIG_CACHE.value && now < APP_CONFIG_CACHE.exp) return APP_CONFIG_CACHE.value;
+  if (APP_CONFIG_CACHE.value && now < APP_CONFIG_CACHE.exp)
+    return APP_CONFIG_CACHE.value;
 
   const AppConfig = requireAppConfigModel();
 
@@ -262,7 +273,7 @@ function instructionsFromConfig(cfg, method, escrowId, totalChargeCents) {
 
   if (method === "BTC") {
     return {
-      qrUrl: opt(cfg?.companyBtcQrUrl) || null, // ✅ includes QR if configured
+      qrUrl: opt(cfg?.companyBtcQrUrl) || null,
       lines: [
         `Send exactly $${totalUsd} worth of BTC to the address below.`,
         `Reference code: ${escrowId}. Keep it for proof.`,
@@ -349,7 +360,7 @@ function applyDiscountIntPrice(priceInt, discountPercent) {
 }
 
 // -----------------------------
-// NEW: Subscription/usage helpers (monthly limits) - REAL COUNT BASED
+// Subscription/usage helpers (monthly limits) - REAL COUNT BASED
 // -----------------------------
 function monthKey(d = new Date()) {
   const y = d.getFullYear();
@@ -437,50 +448,9 @@ async function checkListingsLimitOrThrow(tx, userId, mk, limit) {
   });
 
   if (currentCount >= limit) {
-    const err = new Error(`Monthly listing limit reached (${currentCount}/${limit}). Upgrade to create more listings.`);
-    err.statusCode = 403;
-    throw err;
-  }
-}
-
-
-/**
- * Resolve effective plan limits:
- * - ADMIN => unlimited
- * - ACTIVE UserSubscription.plan => use that
- * - else Plan by user.tier
- * - else FREE
- */
-
-
-async function ensureUsageRow(tx, userId, mk) {
-  await tx.usageMonth.upsert({
-    where: { userId_monthKey: { userId, monthKey: mk } },
-    create: { userId, monthKey: mk },
-    update: {},
-  });
-}
-
-async function incrementListingsCreatedIfAllowedOrThrow(tx, userId, mk, limit) {
-  // unlimited if < 0
-  if (typeof limit === "number" && limit < 0) return;
-
-  if (!Number.isFinite(limit) || limit <= 0) {
-    const err = new Error("Monthly listing limit reached. Upgrade to create more listings.");
-    err.statusCode = 403;
-    throw err;
-  }
-
-  await ensureUsageRow(tx, userId, mk);
-
-  // Atomic: increment only if below limit
-  const updated = await tx.usageMonth.updateMany({
-    where: { userId, monthKey: mk, listingsCreated: { lt: limit } },
-    data: { listingsCreated: { increment: 1 } },
-  });
-
-  if (updated.count === 0) {
-    const err = new Error("Monthly listing limit reached. Upgrade to create more listings.");
+    const err = new Error(
+      `Monthly listing limit reached (${currentCount}/${limit}). Upgrade to create more listings.`
+    );
     err.statusCode = 403;
     throw err;
   }
@@ -497,7 +467,13 @@ export default async function handler(req, res) {
     // PUBLIC: listingComments
     // -------------------------
     if (req.method === "GET" && qv(query?.public) === "listingComments") {
-      if (!checkRateLimitOr429(req, res, { scope: "get:listingComments", limit: 60, windowMs: 60_000 }))
+      if (
+        !checkRateLimitOr429(req, res, {
+          scope: "get:listingComments",
+          limit: 60,
+          windowMs: 60_000,
+        })
+      )
         return;
 
       const listingId = String(qv(query?.listingId) || "");
@@ -529,7 +505,13 @@ export default async function handler(req, res) {
     // PUBLIC: listingBids
     // -------------------------
     if (req.method === "GET" && qv(query?.public) === "listingBids") {
-      if (!checkRateLimitOr429(req, res, { scope: "get:listingBids", limit: 60, windowMs: 60_000 }))
+      if (
+        !checkRateLimitOr429(req, res, {
+          scope: "get:listingBids",
+          limit: 60,
+          windowMs: 60_000,
+        })
+      )
         return;
 
       const listingId = String(qv(query?.listingId) || "");
@@ -562,14 +544,25 @@ export default async function handler(req, res) {
       const highestBid = agg._max?.amount ?? 0;
       const bidCount = agg._count?._all ?? 0;
 
-      return send(res, 200, { bids, bidCount, highestBid, minNextBid: highestBid + 1 });
+      return send(res, 200, {
+        bids,
+        bidCount,
+        highestBid,
+        minNextBid: highestBid + 1,
+      });
     }
 
     // -------------------------
     // PUBLIC: list listings
     // -------------------------
     if (req.method === "GET") {
-      if (!checkRateLimitOr429(req, res, { scope: "get:listings", limit: 120, windowMs: 60_000 }))
+      if (
+        !checkRateLimitOr429(req, res, {
+          scope: "get:listings",
+          limit: 120,
+          windowMs: 60_000,
+        })
+      )
         return;
 
       const platform = qv(query?.platform);
@@ -640,14 +633,23 @@ export default async function handler(req, res) {
     // AUTH: intents + upsert
     // -------------------------
     if (req.method === "POST") {
-      if (!checkRateLimitOr429(req, res, { scope: "post:listings", limit: 120, windowMs: 60_000 }))
+      if (
+        !checkRateLimitOr429(req, res, {
+          scope: "post:listings",
+          limit: 120,
+          windowMs: 60_000,
+        })
+      )
         return;
 
       const body = readJson(req);
       const intent = body.intent || "upsertListing";
 
       const preIdemKey = getIdempotencyKey(req, body);
-      if (preIdemKey && ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)) {
+      if (
+        preIdemKey &&
+        ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)
+      ) {
         const ip = getClientIp(req);
         const cacheKey = `idem:${intent}:${ip}:${preIdemKey}`;
         const cached = getCachedIdem(cacheKey);
@@ -658,7 +660,8 @@ export default async function handler(req, res) {
 
       const idemKey = getIdempotencyKey(req, body);
       const userScopedIdemKey =
-        idemKey && ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)
+        idemKey &&
+        ["addListingBid", "addListingComment", "checkout", "startEscrow"].includes(intent)
           ? `idem:${intent}:u:${decoded.uid}:${idemKey}`
           : null;
 
@@ -671,7 +674,13 @@ export default async function handler(req, res) {
       // Intent: acceptHighestBid (seller only)
       // -----------------------------------------------------------------------
       if (intent === "acceptHighestBid") {
-        if (!checkRateLimitOr429(req, res, { scope: "post:acceptHighestBid", limit: 30, windowMs: 60_000 }))
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:acceptHighestBid",
+            limit: 30,
+            windowMs: 60_000,
+          })
+        )
           return;
 
         const listingId = String(body.listingId || "");
@@ -777,21 +786,36 @@ export default async function handler(req, res) {
 
       // -------- addListingBid --------
       if (intent === "addListingBid") {
-        if (!checkRateLimitOr429(req, res, { scope: "post:addListingBid", limit: 20, windowMs: 60_000 }))
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:addListingBid",
+            limit: 20,
+            windowMs: 60_000,
+          })
+        )
           return;
 
         const listingId = String(body.listingId || "");
         const amount = Number(body.amount);
 
         if (!listingId) return send(res, 400, { message: "Missing listingId" });
-        if (!Number.isFinite(amount) || amount <= 0) return send(res, 400, { message: "Invalid bid amount" });
+        if (!Number.isFinite(amount) || amount <= 0)
+          return send(res, 400, { message: "Invalid bid amount" });
 
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
-          select: { id: true, sellerId: true, status: true, price: true, biddingClosed: true, acceptedBidId: true },
+          select: {
+            id: true,
+            sellerId: true,
+            status: true,
+            price: true,
+            biddingClosed: true,
+            acceptedBidId: true,
+          },
         });
 
-        if (!listing || listing.status !== "ACTIVE") return send(res, 404, { message: "Listing not available" });
+        if (!listing || listing.status !== "ACTIVE")
+          return send(res, 404, { message: "Listing not available" });
 
         if (listing.biddingClosed || listing.acceptedBidId) {
           return send(res, 400, { message: "Bidding is closed for this listing." });
@@ -852,7 +876,13 @@ export default async function handler(req, res) {
 
       // -------- toggleListingLike --------
       if (intent === "toggleListingLike") {
-        if (!checkRateLimitOr429(req, res, { scope: "post:toggleListingLike", limit: 120, windowMs: 60_000 }))
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:toggleListingLike",
+            limit: 120,
+            windowMs: 60_000,
+          })
+        )
           return;
 
         const listingId = String(body.listingId || "");
@@ -892,7 +922,13 @@ export default async function handler(req, res) {
 
       // -------- addListingComment --------
       if (intent === "addListingComment") {
-        if (!checkRateLimitOr429(req, res, { scope: "post:addListingComment", limit: 30, windowMs: 60_000 }))
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:addListingComment",
+            limit: 30,
+            windowMs: 60_000,
+          })
+        )
           return;
 
         const listingId = String(body.listingId || "");
@@ -900,7 +936,8 @@ export default async function handler(req, res) {
 
         if (!listingId) return send(res, 400, { message: "Missing listingId" });
         if (!text) return send(res, 400, { message: "Comment cannot be empty" });
-        if (text.length > 2000) return send(res, 400, { message: "Comment too long (max 2000 chars)" });
+        if (text.length > 2000)
+          return send(res, 400, { message: "Comment too long (max 2000 chars)" });
 
         const result = await prisma.$transaction(async (tx) => {
           await advisoryLock(tx, `comment:${listingId}:${decoded.uid}`);
@@ -940,7 +977,13 @@ export default async function handler(req, res) {
 
       // -------- startEscrow (manual) --------
       if (intent === "startEscrow") {
-        if (!checkRateLimitOr429(req, res, { scope: "post:startEscrow", limit: 20, windowMs: 60_000 }))
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:startEscrow",
+            limit: 20,
+            windowMs: 60_000,
+          })
+        )
           return;
 
         const listingId = String(body.listingId || "");
@@ -959,7 +1002,6 @@ export default async function handler(req, res) {
         const mapped = map[method];
         if (!mapped) return send(res, 400, { message: "Unsupported payment method" });
 
-        // ✅ UPDATED: select discountPercent + category (for streaming kit discount application)
         const listing = await prisma.listing.findUnique({
           where: { id: listingId },
           select: {
@@ -970,8 +1012,8 @@ export default async function handler(req, res) {
             acceptedBidderId: true,
             acceptedBidAmount: true,
             acceptedBidId: true,
-            discountPercent: true, // ✅ NEW
-            category: { select: { slug: true, name: true } }, // ✅ NEW
+            discountPercent: true,
+            category: { select: { slug: true, name: true } },
           },
         });
 
@@ -982,11 +1024,14 @@ export default async function handler(req, res) {
           return send(res, 404, { message: "Listing not available" });
         }
 
-        if (listing.sellerId === decoded.uid) return send(res, 403, { message: "You cannot buy your own listing." });
+        if (listing.sellerId === decoded.uid)
+          return send(res, 403, { message: "You cannot buy your own listing." });
 
         if (listing.acceptedBidId) {
           if (listing.acceptedBidderId !== decoded.uid) {
-            return send(res, 409, { message: "This listing is reserved for another buyer (bid accepted)." });
+            return send(res, 409, {
+              message: "This listing is reserved for another buyer (bid accepted).",
+            });
           }
           if (!listing.acceptedBidAmount) {
             return send(res, 500, { message: "Accepted bid amount missing." });
@@ -1034,10 +1079,11 @@ export default async function handler(req, res) {
 
           if (existing) return existing;
 
-          // If no accepted bid and it's a streaming kit product, apply discountPercent to listing price
           const basePrice = listing.acceptedBidId ? listing.acceptedBidAmount : listing.price;
           const discounted =
-            !listing.acceptedBidId && isKit ? applyDiscountIntPrice(basePrice, listing.discountPercent) : basePrice;
+            !listing.acceptedBidId && isKit
+              ? applyDiscountIntPrice(basePrice, listing.discountPercent)
+              : basePrice;
 
           const priceCents = Math.trunc(Number(discounted) * 100);
           const calcFee = Math.round((priceCents * feeBps) / 10_000);
@@ -1194,7 +1240,13 @@ export default async function handler(req, res) {
 
       // -------- checkout (Stripe) --------
       if (intent === "checkout") {
-        if (!checkRateLimitOr429(req, res, { scope: "post:checkout", limit: 10, windowMs: 60_000 }))
+        if (
+          !checkRateLimitOr429(req, res, {
+            scope: "post:checkout",
+            limit: 10,
+            windowMs: 60_000,
+          })
+        )
           return;
 
         const listingId = body.listingId;
@@ -1245,7 +1297,13 @@ export default async function handler(req, res) {
       }
 
       // -------- default upsert listing --------
-      if (!checkRateLimitOr429(req, res, { scope: "post:upsertListing", limit: 30, windowMs: 60_000 }))
+      if (
+        !checkRateLimitOr429(req, res, {
+          scope: "post:upsertListing",
+          limit: 30,
+          windowMs: 60_000,
+        })
+      )
         return;
 
       const {
@@ -1256,7 +1314,7 @@ export default async function handler(req, res) {
         price,
         income,
         expense,
-        discountPercent, // NEW
+        discountPercent,
         description,
         image,
         images,
@@ -1291,7 +1349,7 @@ export default async function handler(req, res) {
         where: { id: decoded.uid },
         update: { email: decoded.email ?? "unknown" },
         create: { id: decoded.uid, email: decoded.email ?? "unknown" },
-        select: { id: true, role: true, tier: true }, // ✅ include tier for plan fallback
+        select: { id: true, role: true, tier: true },
       });
 
       // Category lookup (also used for streaming kit detection)
@@ -1315,7 +1373,7 @@ export default async function handler(req, res) {
 
       const isStreamingKit = isStreamingKitCategoryRow(categoryRow);
 
-      // ✅ Enforce platform string for streaming kit products
+      // Enforce platform string for streaming kit products
       const finalPlatform = isStreamingKit ? "Streaming Kit" : String(platform);
 
       // Validate platform for non-streaming-kit listings
@@ -1361,13 +1419,11 @@ export default async function handler(req, res) {
               categoryId: categoryToSet,
               price: Math.trunc(numericPrice),
 
-              // ✅ streaming kit products do not use income/expense/metrics
               income: isStreamingKit ? null : numericIncome,
               expense: isStreamingKit ? null : numericExpense,
               metrics: isStreamingKit ? null : metrics ?? undefined,
 
-              // ✅ NEW: discount for streaming kit only; if not streaming kit -> always null
-              // dp === undefined means "not provided" (keep existing) ONLY when streaming kit
+              // streaming kit only; non-kit always null
               discountPercent: isStreamingKit ? dp : null,
 
               description,
@@ -1394,7 +1450,7 @@ export default async function handler(req, res) {
         return send(res, 200, { listing: updated });
       }
 
-    
+      // -------------------------
       // CREATE listing (check monthly limit based on real count)
       // -------------------------
       const created = await prisma.$transaction(async (tx) => {
@@ -1421,43 +1477,6 @@ export default async function handler(req, res) {
             expense: isStreamingKit ? null : numericExpense ?? null,
             metrics: isStreamingKit ? null : metrics ?? null,
 
-            discountPercent: isStreamingKit ? (dp === undefined ? null : dp) : null,
-
-            description,
-            image: finalImages[0],
-            images: finalImages,
-            sellerId: decoded.uid,
-          },
-          include: {
-            seller: {
-              select: {
-                id: true,
-                username: true,
-                avatarUrl: true,
-                lastActiveAt: true,
-                isVerified: true,
-                tier: true,
-              },
-            },
-            category: true,
-          },
-        });
-      });
-
-      return send(res, 201, { listing: created });
-
-        return tx.listing.create({
-          data: {
-            title,
-            platform: finalPlatform,
-            categoryId: categoryToSet,
-            price: Math.trunc(numericPrice),
-
-            income: isStreamingKit ? null : numericIncome ?? null,
-            expense: isStreamingKit ? null : numericExpense ?? null,
-            metrics: isStreamingKit ? null : metrics ?? null,
-
-            // ✅ NEW
             discountPercent: isStreamingKit ? (dp === undefined ? null : dp) : null,
 
             description,
