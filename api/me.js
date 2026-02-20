@@ -51,6 +51,19 @@ function monthKey(d = new Date()) {
   return `${y}-${m}`;
 }
 
+// Get start and end dates for a month key (UTC)
+function getMonthDateRange(mk) {
+  const [year, month] = mk.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+
+  // Next month
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = new Date(Date.UTC(nextYear, nextMonth - 1, 1, 0, 0, 0, 0));
+
+  return { start, end };
+}
+
 async function optionalAuthUid(req) {
   try {
     const header = req.headers.authorization || "";
@@ -135,7 +148,7 @@ function requireNotificationModel() {
 }
 
 // -----------------------------
-// Plans helpers (NEW)
+// Plans helpers
 // -----------------------------
 function normalizeFeatures(features) {
   const f = features && typeof features === "object" ? features : {};
@@ -167,6 +180,36 @@ function adminVirtualPlan() {
 function withNormalizedFeatures(plan) {
   if (!plan) return null;
   return { ...plan, features: normalizeFeatures(plan.features) };
+}
+
+// -----------------------------
+// NEW: Calculate real usage from actual database records
+// -----------------------------
+async function calculateRealUsage(userId, mk) {
+  const { start, end } = getMonthDateRange(mk);
+
+  // Count listings created by this user in the current month
+  const listingsCreated = await prisma.listing.count({
+    where: {
+      sellerId: userId,
+      createdAt: { gte: start, lt: end },
+    },
+  });
+
+  // Count conversations started by this user (as buyer) in the current month
+  const conversationsStarted = await prisma.conversation.count({
+    where: {
+      buyerId: userId,
+      createdAt: { gte: start, lt: end },
+    },
+  });
+
+  return {
+    userId,
+    monthKey: mk,
+    listingsCreated,
+    conversationsStarted,
+  };
 }
 
 export default async function handler(req, res) {
@@ -401,11 +444,9 @@ export default async function handler(req, res) {
       }
 
       const mk = monthKey();
-      const usage = await prisma.usageMonth.upsert({
-        where: { userId_monthKey: { userId: user.id, monthKey: mk } },
-        update: {},
-        create: { userId: user.id, monthKey: mk },
-      });
+
+      // NEW: Calculate real usage from actual database records (includes historical data)
+      const usage = await calculateRealUsage(user.id, mk);
 
       const pendingUpgradeRequest = user.upgradeRequests?.[0] ?? null;
 

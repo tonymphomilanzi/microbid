@@ -349,12 +349,25 @@ function applyDiscountIntPrice(priceInt, discountPercent) {
 }
 
 // -----------------------------
-// NEW: Subscription/usage helpers (monthly limits)
+// NEW: Subscription/usage helpers (monthly limits) - REAL COUNT BASED
 // -----------------------------
 function monthKey(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+// Get start and end dates for a month key (UTC)
+function getMonthDateRange(mk) {
+  const [year, month] = mk.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+
+  // Next month
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = new Date(Date.UTC(nextYear, nextMonth - 1, 1, 0, 0, 0, 0));
+
+  return { start, end };
 }
 
 function normalizeFeatures(features) {
@@ -398,6 +411,47 @@ async function getEffectiveFeaturesForUser(tx, userId, userTier, userRole) {
   // If no plans exist, safest is block creation (0)
   return { listingsPerMonth: 0, conversationsPerMonth: 0 };
 }
+
+/**
+ * Check if user can create a listing based on REAL count from database
+ * This includes historical listings created before tracking was implemented
+ */
+async function checkListingsLimitOrThrow(tx, userId, mk, limit) {
+  // unlimited if < 0
+  if (typeof limit === "number" && limit < 0) return;
+
+  if (!Number.isFinite(limit) || limit <= 0) {
+    const err = new Error("Monthly listing limit reached. Upgrade to create more listings.");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const { start, end } = getMonthDateRange(mk);
+
+  // Count actual listings created this month
+  const currentCount = await tx.listing.count({
+    where: {
+      sellerId: userId,
+      createdAt: { gte: start, lt: end },
+    },
+  });
+
+  if (currentCount >= limit) {
+    const err = new Error(`Monthly listing limit reached (${currentCount}/${limit}). Upgrade to create more listings.`);
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
+
+/**
+ * Resolve effective plan limits:
+ * - ADMIN => unlimited
+ * - ACTIVE UserSubscription.plan => use that
+ * - else Plan by user.tier
+ * - else FREE
+ */
+
 
 async function ensureUsageRow(tx, userId, mk) {
   await tx.usageMonth.upsert({
@@ -1340,21 +1394,57 @@ export default async function handler(req, res) {
         return send(res, 200, { listing: updated });
       }
 
-      // -------------------------
-      // CREATE listing (consume monthly limit)
+    
+      // CREATE listing (check monthly limit based on real count)
       // -------------------------
       const created = await prisma.$transaction(async (tx) => {
         const mk = monthKey();
 
-        // lock around usage+create to reduce races
+        // lock around check+create to reduce races
         await advisoryLock(tx, `usage:listings:${decoded.uid}:${mk}`);
 
         const features = await getEffectiveFeaturesForUser(tx, decoded.uid, dbUser.tier, dbUser.role);
 
-        // ADMIN unlimited; otherwise enforce and increment usage
+        // ADMIN unlimited; otherwise check real count
         if (dbUser.role !== "ADMIN") {
-          await incrementListingsCreatedIfAllowedOrThrow(tx, decoded.uid, mk, features.listingsPerMonth);
+          await checkListingsLimitOrThrow(tx, decoded.uid, mk, features.listingsPerMonth);
         }
+
+        return tx.listing.create({
+          data: {
+            title,
+            platform: finalPlatform,
+            categoryId: categoryToSet,
+            price: Math.trunc(numericPrice),
+
+            income: isStreamingKit ? null : numericIncome ?? null,
+            expense: isStreamingKit ? null : numericExpense ?? null,
+            metrics: isStreamingKit ? null : metrics ?? null,
+
+            discountPercent: isStreamingKit ? (dp === undefined ? null : dp) : null,
+
+            description,
+            image: finalImages[0],
+            images: finalImages,
+            sellerId: decoded.uid,
+          },
+          include: {
+            seller: {
+              select: {
+                id: true,
+                username: true,
+                avatarUrl: true,
+                lastActiveAt: true,
+                isVerified: true,
+                tier: true,
+              },
+            },
+            category: true,
+          },
+        });
+      });
+
+      return send(res, 201, { listing: created });
 
         return tx.listing.create({
           data: {

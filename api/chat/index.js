@@ -11,12 +11,25 @@ function readJson(req) {
 }
 
 // -----------------------------
-// NEW: Month key + plan features
+// Month key + plan features
 // -----------------------------
 function monthKey(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+// Get start and end dates for a month key (UTC)
+function getMonthDateRange(mk) {
+  const [year, month] = mk.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+
+  // Next month
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = new Date(Date.UTC(nextYear, nextMonth - 1, 1, 0, 0, 0, 0));
+
+  return { start, end };
 }
 
 function normalizeFeatures(features) {
@@ -53,16 +66,13 @@ async function getEffectiveFeaturesForUser(tx, userId, userTier, userRole) {
   return { listingsPerMonth: 0, conversationsPerMonth: 0 };
 }
 
-async function ensureUsageRow(tx, userId, mk) {
-  await tx.usageMonth.upsert({
-    where: { userId_monthKey: { userId, monthKey: mk } },
-    create: { userId, monthKey: mk },
-    update: {},
-  });
-}
-
-async function incrementConversationsStartedIfAllowedOrThrow(tx, userId, mk, limit) {
-  if (typeof limit === "number" && limit < 0) return; // unlimited
+/**
+ * Check if user can start a new conversation based on REAL count from database
+ * This includes historical conversations created before tracking was implemented
+ */
+async function checkConversationsLimitOrThrow(tx, userId, mk, limit) {
+  // unlimited if < 0
+  if (typeof limit === "number" && limit < 0) return;
 
   if (!Number.isFinite(limit) || limit <= 0) {
     const err = new Error("Monthly conversation limit reached. Upgrade to start more new conversations.");
@@ -70,18 +80,26 @@ async function incrementConversationsStartedIfAllowedOrThrow(tx, userId, mk, lim
     throw err;
   }
 
-  await ensureUsageRow(tx, userId, mk);
+  const { start, end } = getMonthDateRange(mk);
 
-  const updated = await tx.usageMonth.updateMany({
-    where: { userId, monthKey: mk, conversationsStarted: { lt: limit } },
-    data: { conversationsStarted: { increment: 1 } },
+  // Count actual conversations started by this user (as buyer) this month
+  const currentCount = await tx.conversation.count({
+    where: {
+      buyerId: userId,
+      createdAt: { gte: start, lt: end },
+    },
   });
 
-  if (updated.count === 0) {
-    const err = new Error("Monthly conversation limit reached. Upgrade to start more new conversations.");
+  if (currentCount >= limit) {
+    const err = new Error(`Monthly conversation limit reached (${currentCount}/${limit}). Upgrade to start more new conversations.`);
     err.statusCode = 403;
     throw err;
   }
+}
+
+// Advisory lock helper
+async function advisoryLock(tx, lockKey) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 }
 
 // -----------------------------
@@ -183,14 +201,14 @@ export default async function handler(req, res) {
         create: { id: listing.sellerId, email: listing.seller?.email ?? "unknown" },
       });
 
-      // --- NEW: create conversation + enforce monthly new conversation limit (only if NEW) ---
+      // Create conversation + enforce monthly new conversation limit (only if NEW)
       const result = await prisma.$transaction(async (tx) => {
         const mk = monthKey();
 
-        // lock around usage+create to reduce races
+        // lock around check+create to reduce races
         await advisoryLock(tx, `usage:conversations:${uid}:${mk}`);
 
-        // Check if it already exists (do NOT increment usage if exists)
+        // Check if it already exists (do NOT check limit if exists)
         const existing = await tx.conversation.findUnique({
           where: {
             listingId_buyerId_sellerId: {
@@ -205,24 +223,18 @@ export default async function handler(req, res) {
         if (existing) {
           conversation = existing;
         } else {
-          // Create conversation first
-          conversation = await tx.conversation.create({
-            data: { listingId, buyerId: uid, sellerId: listing.sellerId },
-          });
-
-          // Now enforce limit (if fails, transaction rolls back conversation creation)
+          // Check limit before creating (based on real count including historical data)
           const me = await tx.user.findUnique({ where: { id: uid }, select: { id: true, role: true, tier: true } });
-
           const features = await getEffectiveFeaturesForUser(tx, uid, me?.tier, me?.role);
 
           if (me?.role !== "ADMIN") {
-            await incrementConversationsStartedIfAllowedOrThrow(
-              tx,
-              uid,
-              mk,
-              features.conversationsPerMonth
-            );
+            await checkConversationsLimitOrThrow(tx, uid, mk, features.conversationsPerMonth);
           }
+
+          // Create conversation
+          conversation = await tx.conversation.create({
+            data: { listingId, buyerId: uid, sellerId: listing.sellerId },
+          });
         }
 
         const message = await tx.message.create({
@@ -249,9 +261,4 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(e.statusCode ?? 500).json({ message: e.message ?? "Error" });
   }
-}
-
-// Helper (copy from listings file to keep this file self-contained)
-async function advisoryLock(tx, lockKey) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 }
