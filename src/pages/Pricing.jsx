@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { listingsService } from "../services/listings.service";
 import { useAuth } from "../context/AuthContext";
-import { Check, Crown, Sparkles } from "lucide-react";
+import { Check, Crown, Sparkles, Zap } from "lucide-react";
+import SubscriptionPaymentModal from "../components/checkout/SubscriptionPaymentModal";
 
 function money(cents) {
   const v = (Number(cents || 0) / 100).toFixed(2);
@@ -14,30 +16,39 @@ function money(cents) {
 
 function featuresList(plan) {
   const f = plan?.features || {};
+  const format = (v) => (v < 0 ? "Unlimited" : v ?? "—");
+
   return [
-    { label: "Listings / month", value: f.listingsPerMonth ?? "—" },
-    { label: "New conversations / month", value: f.conversationsPerMonth ?? "—" },
+    { label: "Listings / month", value: format(f.listingsPerMonth) },
+    { label: "New conversations / month", value: format(f.conversationsPerMonth) },
   ];
 }
 
 function PlanCard({ plan, isCurrent, onSelect, loading }) {
   const isPro = plan.name === "PRO";
   const isVip = plan.name === "VIP";
+  const isFree = plan.name === "FREE";
 
   const borderGlow = plan.highlight
     ? "from-primary/60 via-primary/10 to-primary/40"
     : "from-border/60 via-transparent to-border/60";
 
-  const icon = isVip ? Crown : isPro ? Sparkles : Check;
+  const icon = isVip ? Crown : isPro ? Sparkles : Zap;
 
   const priceLine =
     plan.billingType === "FREE"
       ? "Free"
       : plan.billingType === "MONTHLY"
-      ? `${money(plan.monthlyPriceCents)}/month`
-      : `${money(plan.oneTimePriceCents)} lifetime`;
+        ? `${money(plan.monthlyPriceCents)}/month`
+        : `${money(plan.oneTimePriceCents)} lifetime`;
 
   const items = featuresList(plan);
+
+  const buttonLabel = isCurrent
+    ? "Current plan"
+    : isFree
+      ? "Free plan"
+      : `Pay ${plan.billingType === "MONTHLY" ? money(plan.monthlyPriceCents) : money(plan.oneTimePriceCents)}`;
 
   return (
     <div className="relative">
@@ -80,14 +91,16 @@ function PlanCard({ plan, isCurrent, onSelect, loading }) {
             className="w-full"
             variant={isCurrent ? "outline" : "default"}
             onClick={onSelect}
-            disabled={loading || isCurrent || plan.name === "FREE"}
+            disabled={loading || isCurrent || isFree}
           >
-            {isCurrent ? "Current plan" : plan.name === "FREE" ? "Free plan" : "Request upgrade"}
+            {buttonLabel}
           </Button>
 
-          <div className="text-xs text-muted-foreground">
-            Manual upgrade for now. Admin will review your request.
-          </div>
+          {!isFree && !isCurrent ? (
+            <div className="text-xs text-muted-foreground">
+              Manual payment. Your plan activates after verification.
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>
@@ -95,12 +108,15 @@ function PlanCard({ plan, isCurrent, onSelect, loading }) {
 }
 
 export default function Pricing() {
+  const navigate = useNavigate();
   const { user, openAuthModal, me } = useAuth();
 
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [actionLoading, setActionLoading] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [payModalOpen, setPayModalOpen] = useState(false);
+
   const [message, setMessage] = useState("");
 
   const currentTier = me?.tier || "FREE";
@@ -127,7 +143,7 @@ export default function Pricing() {
     return [...plans].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [plans]);
 
-  async function requestUpgrade(planName) {
+  function selectPlan(plan) {
     setMessage("");
 
     if (!user) {
@@ -135,15 +151,21 @@ export default function Pricing() {
       return;
     }
 
-    setActionLoading(planName);
-    try {
-      await listingsService.requestUpgrade(planName);
-      setMessage(`Upgrade request submitted for ${planName}.`);
-    } catch (e) {
-      setMessage(e?.response?.data?.message || e.message || "Failed to request upgrade");
-    } finally {
-      setActionLoading("");
+    if (plan.name === "FREE" || plan.name === currentTier) {
+      return;
     }
+
+    setSelectedPlan(plan);
+    setPayModalOpen(true);
+  }
+
+  function onChoosePaymentMethod(method) {
+    setPayModalOpen(false);
+
+    if (!selectedPlan) return;
+
+    // Navigate to subscription checkout page
+    navigate(`/subscribe/${selectedPlan.name}?method=${encodeURIComponent(method)}`);
   }
 
   return (
@@ -152,7 +174,7 @@ export default function Pricing() {
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">Plans</h1>
           <p className="text-sm text-muted-foreground">
-            Upgrade your account to increase monthly limits and unlock discounts. VIP is lifetime.
+            Upgrade your account to increase monthly limits and unlock more features. VIP is lifetime.
           </p>
           {message ? (
             <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-sm">
@@ -170,13 +192,20 @@ export default function Pricing() {
                 key={p.id}
                 plan={p}
                 isCurrent={p.name === currentTier}
-                loading={actionLoading === p.name}
-                onSelect={() => requestUpgrade(p.name)}
+                loading={false}
+                onSelect={() => selectPlan(p)}
               />
             ))
           )}
         </div>
       </div>
+
+      <SubscriptionPaymentModal
+        open={payModalOpen}
+        onOpenChange={setPayModalOpen}
+        plan={selectedPlan}
+        onNext={onChoosePaymentMethod}
+      />
     </PageContainer>
   );
 }

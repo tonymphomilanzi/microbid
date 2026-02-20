@@ -48,6 +48,8 @@ import AdminEscrows from "./pages/admin/AdminEscrows";
 import AdminStreams from "./pages/admin/AdminStreams";
 import AdminPages from "./pages/admin/AdminPages"; // NEW
 import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
+import SubscriptionCheckout from "./pages/SubscriptionCheckout";
+
 
 export default function App() {
   usePresencePing();
@@ -76,6 +78,7 @@ export default function App() {
 
         {/* Pricing (public) */}
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/subscription-checkout/:planName" element={<SubscriptionCheckout />} />
 
         {/* CMS pages (public). */}
         <Route path="/about" element={<SitePage />} />
@@ -150,6 +153,7 @@ export default function App() {
           <Route path="settings" element={<AdminSettings />} />
           <Route path="escrows" element={<AdminEscrows />} />
           <Route path="subscriptions" element={<AdminSubscriptions />} />
+          <Route path="subscription-payments" element={<AdminSubscriptionPayments />} /> {/* NEW */}
 
 
           {/* Later: CMS admin page editor */}

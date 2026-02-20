@@ -68,6 +68,8 @@ model User {
 
   sitePages SitePage[]
 
+  subscriptionPayments SubscriptionPayment[]
+
 }
 
 
@@ -246,6 +248,9 @@ model Plan {
   createdAt    DateTime    @default(now())
 
   subscriptions UserSubscription[]
+
+  
+  subscriptionPayments SubscriptionPayment[]
 }
 
 enum UpgradeRequestStatus {
@@ -646,4 +651,44 @@ model SitePage {
   updatedAt   DateTime @updatedAt
 
   @@index([isPublished, updatedAt])
+}
+
+enum SubscriptionPaymentStatus {
+  INITIATED
+  SUBMITTED
+  VERIFIED
+  CANCELLED
+}
+
+model SubscriptionPayment {
+  id        String   @id @default(cuid())
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+  
+  provider  PaymentProvider
+  providerRef String?
+  
+  status    SubscriptionPaymentStatus @default(INITIATED)
+  
+  priceCents       Int
+  feeCents         Int @default(0)
+  totalChargeCents Int
+  
+  reference String?  // payment reference submitted by user
+  proofUrl  String?
+  note      String?
+  
+  verifiedAt DateTime?
+  verifiedBy String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
 }

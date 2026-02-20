@@ -13,6 +13,7 @@ import {
   Cog6ToothIcon,
   ShieldCheckIcon, //  NEW
   VideoCameraIcon,
+  CreditCardIcon, // NEW
 } from "@heroicons/react/24/outline";
 
 const nav = [
@@ -25,6 +26,7 @@ const nav = [
   { to: "/admin/streams", label: "Streams", Icon: VideoCameraIcon },
   { to: "/admin/pages", label: "Pages", Icon: ListBulletIcon }, // or any icon you prefer
   { to: "/admin/subscriptions", label: "Subscriptions", Icon: RectangleStackIcon },
+  { to: "/admin/subscription-payments", label: "Sub Payments", Icon: CreditCardIcon },
 
   //  NEW: Escrows queue
   { to: "/admin/escrows", label: "Escrows", Icon: ShieldCheckIcon },

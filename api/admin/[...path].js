@@ -524,6 +524,126 @@ await prisma.upgradeRequest.updateMany({
       return res.status(405).json({ message: "Method not allowed" });
     }
 
+
+        // ---------------- SUBSCRIPTION PAYMENTS ----------------
+    // GET    /api/admin/subscription-payments
+    // PATCH  /api/admin/subscription-payments/<id>  { intent: "verify" }
+    if (resource === "subscription-payments") {
+      if (req.method === "GET") {
+        const status = url.searchParams.get("status") || "";
+        const q = (url.searchParams.get("q") || "").trim();
+
+        const payments = await prisma.subscriptionPayment.findMany({
+          where: {
+            ...(status ? { status } : {}),
+            ...(q
+              ? {
+                  OR: [
+                    { id: { contains: q, mode: "insensitive" } },
+                    { userId: { contains: q, mode: "insensitive" } },
+                    { reference: { contains: q, mode: "insensitive" } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+          include: {
+            plan: { select: { id: true, name: true, billingType: true } },
+            user: { select: { id: true, email: true, username: true, tier: true } },
+          },
+        });
+
+        return res.status(200).json({ payments });
+      }
+
+      if (req.method === "PATCH") {
+        if (!id) return res.status(400).json({ message: "Missing payment id" });
+        const body = readJson(req);
+
+        if (body.intent !== "verify") {
+          return res.status(400).json({ message: "Unsupported intent" });
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`sub:verify:${id}`}, 0))`;
+
+          const payment = await tx.subscriptionPayment.findUnique({
+            where: { id },
+            include: { plan: true, user: true },
+          });
+
+          if (!payment) {
+            const err = new Error("Payment not found");
+            err.statusCode = 404;
+            throw err;
+          }
+
+          if (payment.status === "VERIFIED") {
+            return { payment, alreadyVerified: true };
+          }
+
+          if (!["INITIATED", "SUBMITTED"].includes(payment.status)) {
+            const err = new Error(`Cannot verify payment in status ${payment.status}`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          // Update payment status
+          const updated = await tx.subscriptionPayment.update({
+            where: { id },
+            data: {
+              status: "VERIFIED",
+              verifiedAt: new Date(),
+              verifiedBy: adminUid,
+            },
+            include: { plan: true },
+          });
+
+          // Upgrade user tier
+          await tx.user.update({
+            where: { id: payment.userId },
+            data: { tier: payment.plan.name },
+          });
+
+          // Upsert UserSubscription
+          await tx.userSubscription.upsert({
+            where: { userId: payment.userId },
+            create: { userId: payment.userId, planId: payment.planId, status: "ACTIVE" },
+            update: { planId: payment.planId, status: "ACTIVE" },
+          });
+
+          // Clear any pending upgrade requests
+          await tx.upgradeRequest.updateMany({
+            where: { userId: payment.userId, status: "PENDING" },
+            data: { status: "APPROVED", decidedAt: new Date(), decidedBy: adminUid },
+          });
+
+          // Notify user
+          const canNotify = Boolean(tx.notification);
+          if (canNotify) {
+            await tx.notification.create({
+              data: {
+                userId: payment.userId,
+                type: "SUBSCRIPTION_VERIFIED",
+                title: "Subscription activated",
+                body: `Your ${payment.plan.name} plan is now active!`,
+                url: "/dashboard",
+                meta: { paymentId: payment.id, planId: payment.planId, planName: payment.plan.name },
+              },
+            });
+          }
+
+          return { payment: updated };
+        });
+
+        return res.status(200).json(result);
+      }
+
+      res.setHeader("Allow", "GET, PATCH");
+      return res.status(405).json({ message: "Method not allowed" });
+    }
+
     // ---------------- LISTINGS ----------------
     if (resource === "listings") {
       if (req.method === "GET") {

@@ -57,4 +57,9 @@ verifyEscrowPayment: (id) =>
   getPlans: () => api.get("/admin/plans").then((r) => r.data),
   updatePlan: (id, payload) =>
     api.patch("/admin/plans", payload, { params: { id } }).then((r) => r.data),
+
+    // Subscription Payments
+  getSubscriptionPayments: (params) => api.get("/admin/subscription-payments", { params }).then((r) => r.data),
+  verifySubscriptionPayment: (id) =>
+    api.patch("/admin/subscription-payments", { intent: "verify" }, { params: { id } }).then((r) => r.data),
 };
