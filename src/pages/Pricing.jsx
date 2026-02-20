@@ -165,7 +165,8 @@ export default function Pricing() {
     if (!selectedPlan) return;
 
     // Navigate to subscription checkout page
-    navigate(`/subscribe/${selectedPlan.name}?method=${encodeURIComponent(method)}`);
+    //navigate(`/subscribe/${selectedPlan.name}?method=${encodeURIComponent(method)}`);
+    navigate(`/subscription-checkout/${selectedPlan.name}?method=${encodeURIComponent(method)}`);
   }
 
   return (

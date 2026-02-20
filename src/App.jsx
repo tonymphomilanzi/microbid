@@ -132,14 +132,15 @@ export default function App() {
           }
         />
 
-          <Route
-          path="/subscription-checkout/:planName"
-          element={
-            <ProtectedRoute>
-              <SubscriptionCheckout />
-            </ProtectedRoute>
-          }
-        />
+{/* Subscription checkout - protected */}
+<Route
+  path="/subscribe/:planName"
+  element={
+    <ProtectedRoute>
+      <SubscriptionCheckout />
+    </ProtectedRoute>
+  }
+/>
 
          
 
