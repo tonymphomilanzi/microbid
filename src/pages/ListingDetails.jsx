@@ -61,6 +61,30 @@ function moneyOrDash(v) {
   return `$${n}`;
 }
 
+{/**
+
+function VerifiedCheckWithOnline({ online }) {
+  return (
+    <span
+      className="relative inline-flex h-5 w-5"
+      title={online ? "Verified • Online" : "Verified"}
+    
+      <span className="absolute inset-0 rounded-full bg-primary" />
+
+    
+      {online && (
+        <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5">
+          <span className="absolute inset-0 rounded-full bg-emerald-400 ring-4 ring-background animate-pulse" />
+        </span>
+      )}
+
+      <BadgeCheck className="h-5 w-5 text-white" strokeWidth={3.5} />
+    </span>
+  );
+}*/}
+
+
+// Corrected for JavaScript
 function VerifiedCheckWithOnline({ online }) {
   return (
     <span
@@ -73,7 +97,7 @@ function VerifiedCheckWithOnline({ online }) {
       {/* Online dot in top-right (like Instagram) */}
       {online && (
         <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5">
-          <span className="absolute inset-0 rounded-full bg-emerald-400 ring-4 ring-background animate-pulse" />
+          <span className="absolute inset-0 animate-pulse rounded-full bg-emerald-400 ring-4 ring-background animate-pulse" />
         </span>
       )}
 
