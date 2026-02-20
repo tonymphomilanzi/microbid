@@ -79,7 +79,7 @@ export default function App() {
 
         {/* Pricing (public) */}
         <Route path="/pricing" element={<Pricing />} />
-        <Route path="/subscription-checkout/:planName" element={<SubscriptionCheckout />} />
+       
 
         {/* CMS pages (public). */}
         <Route path="/about" element={<SitePage />} />
@@ -131,6 +131,17 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+          <Route
+          path="/subscription-checkout/:planName"
+          element={
+            <ProtectedRoute>
+              <SubscriptionCheckout />
+            </ProtectedRoute>
+          }
+        />
+
+         
 
         {/* ============================================================
             ADMIN ROUTES (admin-only)
