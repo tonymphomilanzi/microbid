@@ -85,10 +85,10 @@ export default function Navbar() {
               <>
                 {/* Messages - visible on both mobile and desktop */}
                 <button
-                  onClick={() => navigate("/dashboard?tab=inbox")}
-                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
-                  aria-label="Inbox"
-                  title="Inbox"
+                   onClick={() => navigate("/messages")}
+  className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+  aria-label="Messages"
+  title="Messages"
                 >
                   <ChatBubbleLeftRightIcon className="h-6 w-6" />
                   {unreadChats > 0 ? (

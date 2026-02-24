@@ -8,8 +8,6 @@ import { Badge } from "../components/ui/badge";
 import { listingsService } from "../services/listings.service";
 import AvatarSetupDialog from "../components/forms/AvatarSetupDialog";
 import UsernameSetupDialog from "../components/forms/UsernameSetupDialog";
-import ChatDialog from "../components/chat/ChatDialog";
-import { chatService } from "../services/chat.service";
 import ConfirmDeleteDialog from "../components/ui/ConfirmDeleteDialog";
 import { useAuth } from "../context/AuthContext";
 
@@ -19,7 +17,6 @@ import {
   Pencil,
   Power,
   BarChart3,
-  MessageCircle,
   LogOut,
   Settings,
   Sparkles,
@@ -41,19 +38,16 @@ function StatusBadge({ status }) {
   );
 }
 
-// Helper to format limit display
 function formatLimit(value) {
   if (value === null || value === undefined) return "—";
   if (value < 0) return "Unlimited";
   return String(value);
 }
 
-// Helper to check if unlimited
 function isUnlimited(value) {
   return typeof value === "number" && value < 0;
 }
 
-// Progress bar for usage
 function UsageProgress({ used, limit, label }) {
   const unlimited = isUnlimited(limit);
   const percent = unlimited ? 0 : limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
@@ -84,7 +78,6 @@ function UsageProgress({ used, limit, label }) {
   );
 }
 
-// Plan badge with icon
 function PlanBadge({ name }) {
   const config = {
     FREE: { color: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30", icon: Zap },
@@ -101,6 +94,15 @@ function PlanBadge({ name }) {
       <Icon className="h-3 w-3" />
       {name}
     </Badge>
+  );
+}
+
+function MiniMetric({ label, value }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-2">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-semibold">{value}</div>
+    </div>
   );
 }
 
@@ -129,7 +131,7 @@ export default function Dashboard() {
   const modalParam = rawTab === "avatar" ? "avatar" : rawModal;
 
   const activeTab = useMemo(() => {
-    const allowed = new Set(["listings", "inbox", "purchases", "sales", "settings"]);
+    const allowed = new Set(["listings", "purchases", "sales", "settings"]);
     return allowed.has(tabParam) ? tabParam : "listings";
   }, [tabParam]);
 
@@ -138,7 +140,7 @@ export default function Dashboard() {
 
   function setTab(next) {
     const nextSp = new URLSearchParams(sp);
-    nextSp.delete("modal"); // always close modal when switching tabs
+    nextSp.delete("modal");
 
     if (!next || next === "listings") nextSp.delete("tab");
     else nextSp.set("tab", next);
@@ -149,7 +151,7 @@ export default function Dashboard() {
   function openSettingsModal(which) {
     const nextSp = new URLSearchParams(sp);
     nextSp.set("tab", "settings");
-    nextSp.set("modal", which); // "username" | "avatar"
+    nextSp.set("modal", which);
     setSp(nextSp, { replace: true });
   }
 
@@ -160,30 +162,10 @@ export default function Dashboard() {
     setSp(nextSp, { replace: true });
   }
 
-  // Inbox
-  const [convosLoading, setConvosLoading] = useState(true);
-  const [inboxError, setInboxError] = useState("");
-  const [conversations, setConversations] = useState([]);
-  const [activeConvoId, setActiveConvoId] = useState("");
-  const [inboxOpen, setInboxOpen] = useState(false);
-
-  // delete state
+  // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [listingToDelete, setListingToDelete] = useState(null);
-
-  async function loadInbox() {
-    setInboxError("");
-    setConvosLoading(true);
-    try {
-      const { conversations } = await chatService.list();
-      setConversations(conversations || []);
-    } catch (e) {
-      setInboxError(e?.response?.data?.message || e.message || "Failed to load inbox");
-    } finally {
-      setConvosLoading(false);
-    }
-  }
 
   async function refresh() {
     setError("");
@@ -198,8 +180,6 @@ export default function Dashboard() {
       setCurrentPlan(res.currentPlan || null);
       setUsage(res.usage || null);
       setPendingUpgradeRequest(res.pendingUpgradeRequest || null);
-
-      await loadInbox();
     } catch (e) {
       setError(e?.response?.data?.message || e.message || "Failed to load dashboard");
     } finally {
@@ -258,12 +238,9 @@ export default function Dashboard() {
 
   const defaultAvatar = "/avatar-default.png";
 
-  // Derived: check if pending upgrade request matches a different plan than current
   const pendingPlanName = pendingUpgradeRequest?.requestedPlan;
   const pendingMatchesCurrent =
     pendingPlanName && currentPlan?.name?.toUpperCase() === pendingPlanName?.toUpperCase();
-
-  // If pending matches current, the upgrade was approved (show success)
   const upgradeApproved = pendingUpgradeRequest && pendingMatchesCurrent;
 
   return (
@@ -345,7 +322,6 @@ export default function Dashboard() {
         {currentPlan ? (
           <Card className="border-border/60 bg-card/60">
             <CardContent className="p-5 space-y-4">
-              {/* Plan header */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
@@ -371,7 +347,6 @@ export default function Dashboard() {
                 ) : null}
               </div>
 
-              {/* Usage tracking */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <UsageProgress
                   used={usage?.listingsCreated ?? 0}
@@ -385,7 +360,6 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Plan limits summary */}
               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                 <div>
                   <span className="font-medium text-foreground">
@@ -401,7 +375,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Pending upgrade request (only if NOT approved yet) */}
               {pendingUpgradeRequest && !pendingMatchesCurrent ? (
                 <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
                   <div className="flex items-center gap-2">
@@ -454,20 +427,8 @@ export default function Dashboard() {
         <Tabs value={activeTab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="listings">My Listings</TabsTrigger>
-
-            <TabsTrigger value="inbox" className="gap-2">
-              <MessageCircle className="h-4 w-4" />
-              Inbox
-              {conversations?.some((c) => c.unreadCount > 0) ? (
-                <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                  {conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
-                </span>
-              ) : null}
-            </TabsTrigger>
-
             <TabsTrigger value="purchases">Purchases</TabsTrigger>
             <TabsTrigger value="sales">Sales</TabsTrigger>
-
             <TabsTrigger value="settings" className="gap-2">
               <Settings className="h-4 w-4" />
               Settings
@@ -507,7 +468,6 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* Subscription info in settings */}
             {currentPlan ? (
               <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-5 space-y-3">
@@ -640,131 +600,6 @@ export default function Dashboard() {
             )}
           </TabsContent>
 
-          {/* INBOX */}
-          <TabsContent value="inbox" className="mt-4 space-y-3">
-            {inboxError ? (
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="p-5">
-                  <div className="text-sm font-medium">Could not load inbox</div>
-                  <div className="mt-1 text-sm text-muted-foreground">{inboxError}</div>
-                  <div className="mt-4">
-                    <Button variant="outline" onClick={loadInbox}>
-                      Retry inbox
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {convosLoading ? (
-              <Card>
-                <CardContent className="p-6 text-sm text-muted-foreground">Loading inbox…</CardContent>
-              </Card>
-            ) : !conversations.length ? (
-              <Card>
-                <CardContent className="p-6 text-sm text-muted-foreground">No conversations yet.</CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-2">
-                {conversations.map((c) => {
-                  const lastText = c.messages?.[0]?.text ?? "No messages yet";
-                  const otherUser = c.buyerId === me?.id ? c.seller : c.buyer;
-                  const otherUsername = otherUser?.username || "";
-
-                  const initials = otherUsername ? otherUsername.slice(0, 2).toUpperCase() : "U";
-                  const unread = (c.unreadCount || 0) > 0;
-
-                  const ts = c.lastMessageAt || c.updatedAt;
-                  const timeLabel = ts ? new Date(ts).toLocaleString() : "";
-
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setActiveConvoId(c.id);
-                        setInboxOpen(true);
-                      }}
-                      className={[
-                        "w-full text-left rounded-xl border p-3 transition",
-                        "border-border/60 bg-card/60 hover:bg-muted/20",
-                        unread ? "ring-1 ring-primary/30 bg-primary/5" : "",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* Avatar (still initials for now) */}
-                        <div
-                          className={[
-                            "h-10 w-10 shrink-0 rounded-full grid place-items-center border text-sm font-semibold",
-                            unread
-                              ? "border-primary/30 bg-primary/15 text-primary"
-                              : "border-border/60 bg-muted/20 text-muted-foreground",
-                          ].join(" ")}
-                        >
-                          {initials}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className={["truncate text-sm", unread ? "font-semibold" : "font-medium"].join(" ")}>
-                                {otherUsername ? (
-                                  `@${otherUsername}`
-                                ) : (
-                                  <span className="select-none blur-[3px]">@private_user</span>
-                                )}
-                              </div>
-
-                              <div className="mt-0.5 flex items-center gap-2">
-                                <Badge variant="outline" className="border-border/60 bg-muted/20">
-                                  {c.listing?.platform}
-                                </Badge>
-                                <span className="truncate text-xs text-muted-foreground">
-                                  {c.listing?.title}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="shrink-0 text-xs text-muted-foreground">{timeLabel}</div>
-                          </div>
-
-                          <div className={["mt-2 truncate text-sm", unread ? "text-foreground" : "text-muted-foreground"].join(" ")}>
-                            {lastText}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {unread ? (
-                            <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                              {c.unreadCount}
-                            </span>
-                          ) : null}
-
-                          {c.listing?.image ? (
-                            <img
-                              src={c.listing.image}
-                              alt="Listing"
-                              className="h-10 w-14 rounded-md object-cover border border-border/60"
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            <ChatDialog
-              open={inboxOpen}
-              onOpenChange={(o) => {
-                setInboxOpen(o);
-                if (!o) loadInbox();
-              }}
-              currentUser={me ? { uid: me.id } : null}
-              conversationId={activeConvoId || undefined}
-            />
-          </TabsContent>
-
           {/* PURCHASES */}
           <TabsContent value="purchases" className="mt-4 space-y-3">
             {loading ? (
@@ -835,7 +670,6 @@ export default function Dashboard() {
           onConfirm={removeListingConfirmed}
         />
 
-        {/* Dialogs controlled by URL */}
         <UsernameSetupDialog
           open={usernameDialogOpen}
           onOpenChange={(open) => {
@@ -863,14 +697,5 @@ export default function Dashboard() {
         />
       </div>
     </PageContainer>
-  );
-}
-
-function MiniMetric({ label, value }) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-muted/20 p-2">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className="text-sm font-semibold">{value}</div>
-    </div>
   );
 }

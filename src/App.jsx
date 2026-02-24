@@ -51,6 +51,9 @@ import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import SubscriptionCheckout from "./pages/SubscriptionCheckout";
 import AdminSubscriptionPayments from "./pages/admin/AdminSubscriptionPayments"; // NEW
 
+// In your routes file (e.g., App.jsx or routes.jsx)
+import Messages from "./pages/Messages"
+
 
 export default function App() {
   usePresencePing();
@@ -79,6 +82,9 @@ export default function App() {
 
         {/* Pricing (public) */}
         <Route path="/pricing" element={<Pricing />} />
+
+        
+<Route path="/messages" element={<Messages />} />
        
 
         {/* CMS pages (public). */}
