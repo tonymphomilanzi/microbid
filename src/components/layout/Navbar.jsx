@@ -38,12 +38,9 @@ export default function Navbar() {
       {/* TOP BAR */}
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur overflow-x-clip">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-2 sm:px-4">
-          {/* Brand */}
+          {/* Brand - visible on all screens */}
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight shrink-0">
-            <span className="hidden sm:inline">Mikrobid</span>
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-muted/20 sm:hidden">
-              M
-            </span>
+            Mikrobid
           </Link>
 
           {/* Desktop nav */}
@@ -86,7 +83,22 @@ export default function Navbar() {
               <div className="h-10 w-24 rounded-md bg-muted/40" />
             ) : user ? (
               <>
-                {/* Notifications */}
+                {/* Messages - visible on both mobile and desktop */}
+                <button
+                  onClick={() => navigate("/dashboard?tab=inbox")}
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+                  aria-label="Inbox"
+                  title="Inbox"
+                >
+                  <ChatBubbleLeftRightIcon className="h-6 w-6" />
+                  {unreadChats > 0 ? (
+                    <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
+                      {unreadChats > 99 ? "99+" : unreadChats}
+                    </span>
+                  ) : null}
+                </button>
+
+                {/* Notifications - visible on both mobile and desktop */}
                 <button
                   onClick={() => navigate("/notifications")}
                   className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
@@ -101,30 +113,17 @@ export default function Navbar() {
                   ) : null}
                 </button>
 
-                {/* Desktop-only quick icons */}
-                <button
-                  onClick={() => navigate("/dashboard?tab=inbox")}
-                  className="relative hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
-                  aria-label="Inbox"
-                  title="Inbox"
-                >
-                  <ChatBubbleLeftRightIcon className="h-6 w-6" />
-                  {unreadChats > 0 ? (
-                    <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
-                      {unreadChats > 99 ? "99+" : unreadChats}
-                    </span>
-                  ) : null}
-                </button>
-
+                {/* Dashboard - visible on both mobile and desktop */}
                 <button
                   onClick={() => navigate("/dashboard")}
-                  className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
                   aria-label="Dashboard"
                   title="Dashboard"
                 >
                   <UserCircleIcon className="h-6 w-6" />
                 </button>
 
+                {/* Admin button - desktop only */}
                 {isAdmin ? (
                   <button
                     onClick={() => navigate("/admin")}
@@ -134,56 +133,24 @@ export default function Navbar() {
                   </button>
                 ) : null}
 
-                {/* Mobile hamburger */}
-                <div className="sm:hidden">
-                  <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-                    <SheetTrigger asChild>
-                      <button
-                        className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
-                        aria-label="Menu"
-                        title="Menu"
-                      >
-                        <Bars3Icon className="h-6 w-6" />
-                        {unreadChats > 0 ? (
-                          <span className="absolute -right-1 -top-1 min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
-                            {unreadChats > 99 ? "99+" : unreadChats}
-                          </span>
-                        ) : null}
-                      </button>
-                    </SheetTrigger>
-
-                    <SheetContent side="right" className="w-72 bg-card">
-                      <div className="space-y-1">
-                        <div className="mb-2 text-sm font-semibold">Menu</div>
-
+                {/* Mobile hamburger - only shown for Admin users */}
+                {isAdmin && (
+                  <div className="sm:hidden">
+                    <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+                      <SheetTrigger asChild>
                         <button
-                          onClick={() => {
-                            setMenuOpen(false);
-                            navigate("/dashboard?tab=inbox");
-                          }}
-                          className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+                          aria-label="Menu"
+                          title="Menu"
                         >
-                          <ChatBubbleLeftRightIcon className="h-5 w-5" />
-                          Inbox
-                          {unreadChats > 0 ? (
-                            <span className="ml-auto min-w-[18px] rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold text-primary-foreground shadow">
-                              {unreadChats > 99 ? "99+" : unreadChats}
-                            </span>
-                          ) : null}
+                          <Bars3Icon className="h-6 w-6" />
                         </button>
+                      </SheetTrigger>
 
-                        <button
-                          onClick={() => {
-                            setMenuOpen(false);
-                            navigate("/dashboard");
-                          }}
-                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
-                        >
-                          <UserCircleIcon className="h-5 w-5" />
-                          Dashboard
-                        </button>
+                      <SheetContent side="right" className="w-72 bg-card">
+                        <div className="space-y-1">
+                          <div className="mb-2 text-sm font-semibold">Menu</div>
 
-                        {isAdmin ? (
                           <button
                             onClick={() => {
                               setMenuOpen(false);
@@ -196,11 +163,11 @@ export default function Navbar() {
                             </span>
                             Admin
                           </button>
-                        ) : null}
-                      </div>
-                    </SheetContent>
-                  </Sheet>
-                </div>
+                        </div>
+                      </SheetContent>
+                    </Sheet>
+                  </div>
+                )}
               </>
             ) : (
               <>
