@@ -14,6 +14,91 @@ function q1(v) {
   return Array.isArray(v) ? v[0] : v;
 }
 
+// =============================================
+// SHARE/OG HELPERS (for social media previews)
+// =============================================
+function escapeHtml(s = "") {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function truncate(s = "", n = 160) {
+  const str = String(s).trim().replace(/\s+/g, " ");
+  return str.length > n ? str.slice(0, n - 1) + "…" : str;
+}
+
+function getBaseUrl(req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+function htmlDoc({ title, description, image, url, redirectTo, siteName = "Microbid" }) {
+  const t = escapeHtml(title);
+  const d = escapeHtml(description);
+  const hasImage = Boolean(image);
+  const twitterCard = hasImage ? "summary_large_image" : "summary";
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${t}</title>
+<meta name="description" content="${d}"/>
+
+<!-- Open Graph -->
+<meta property="og:title" content="${t}"/>
+<meta property="og:description" content="${d}"/>
+<meta property="og:url" content="${escapeHtml(url)}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="${escapeHtml(siteName)}"/>
+${hasImage ? `<meta property="og:image" content="${escapeHtml(image)}"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>` : ""}
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="${twitterCard}"/>
+<meta name="twitter:title" content="${t}"/>
+<meta name="twitter:description" content="${d}"/>
+${hasImage ? `<meta name="twitter:image" content="${escapeHtml(image)}"/>` : ""}
+
+<link rel="canonical" href="${escapeHtml(redirectTo.startsWith("http") ? redirectTo : url.split("?")[0].replace("/api/me", "") + redirectTo)}"/>
+
+<!-- Auto-redirect to SPA -->
+<meta http-equiv="refresh" content="0; url=${escapeHtml(redirectTo)}" />
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 24px;
+    max-width: 600px;
+    margin: 0 auto;
+    background: #0a0a0a;
+    color: #fafafa;
+  }
+  h1 { margin: 0 0 8px 0; font-size: 1.5rem; }
+  .desc { margin: 0 0 16px 0; color: #a1a1aa; }
+  .redirect { margin: 0; color: #71717a; }
+  a { color: #3b82f6; }
+  img { max-width: 100%; border-radius: 8px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+  ${hasImage ? `<img src="${escapeHtml(image)}" alt="${t}" />` : ""}
+  <h1>${t}</h1>
+  <p class="desc">${d}</p>
+  <p class="redirect">
+    Redirecting… <a href="${escapeHtml(redirectTo)}">Click here if not redirected</a>
+  </p>
+</body>
+</html>`;
+}
+// =============================================
+
 function normalizeUsername(input) {
   return String(input || "")
     .trim()
@@ -214,6 +299,129 @@ async function calculateRealUsage(userId, mk) {
 
 export default async function handler(req, res) {
   try {
+    // =============================================
+    // PUBLIC: SHARE (OG meta tags for social media)
+    // GET /api/me?public=share&type=feed&id=...
+    // GET /api/me?public=share&type=listing&id=...
+    // =============================================
+    if (req.method === "GET" && q1(req.query?.public) === "share") {
+      const type = String(q1(req.query?.type) || "").toLowerCase();
+      const id = String(q1(req.query?.id) || "");
+      const baseUrl = getBaseUrl(req);
+
+      // No type/id -> fallback to home
+      if (!type || !id) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=300");
+        return res.status(200).send(
+          htmlDoc({
+            title: "Microbid",
+            description: "Marketplace for buying and selling digital accounts and services.",
+            image: "",
+            url: baseUrl,
+            redirectTo: "/feed",
+          })
+        );
+      }
+
+      // FEED POST SHARE
+      if (type === "feed") {
+        const post = await prisma.feedPost.findUnique({
+          where: { id },
+          include: { author: { select: { username: true } } },
+        });
+
+        if (!post) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.status(200).send(
+            htmlDoc({
+              title: "Post not found • Microbid",
+              description: "This post may have been removed or is no longer available.",
+              image: "",
+              url: `${baseUrl}/feed`,
+              redirectTo: "/feed",
+            })
+          );
+        }
+
+        const shareUrl = `${baseUrl}/api/me?public=share&type=feed&id=${encodeURIComponent(post.id)}`;
+        const redirectTo = `/feed/${encodeURIComponent(post.id)}`;
+
+        const authorName = post.author?.username ? `@${post.author.username}` : "Microbid";
+        const description = post.body
+          ? truncate(post.body, 180)
+          : `Posted by ${authorName} on Microbid`;
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+
+        return res.status(200).send(
+          htmlDoc({
+            title: post.title || "Feed Post",
+            description,
+            image: post.image || "",
+            url: shareUrl,
+            redirectTo,
+          })
+        );
+      }
+
+      // LISTING SHARE
+      if (type === "listing") {
+        const listing = await prisma.listing.findUnique({
+          where: { id },
+          include: { seller: { select: { username: true } } },
+        });
+
+        if (!listing) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.status(200).send(
+            htmlDoc({
+              title: "Listing not found • Microbid",
+              description: "This listing may have been sold or removed.",
+              image: "",
+              url: `${baseUrl}/marketplace`,
+              redirectTo: "/marketplace",
+            })
+          );
+        }
+
+        const shareUrl = `${baseUrl}/api/me?public=share&type=listing&id=${encodeURIComponent(listing.id)}`;
+        const redirectTo = `/listings/${encodeURIComponent(listing.id)}`;
+
+        const sellerName = listing.seller?.username ? `@${listing.seller.username}` : "a seller";
+        const priceText = listing.price ? `$${listing.price}` : "";
+        const description = listing.description
+          ? truncate(listing.description, 160)
+          : `${priceText ? priceText + " • " : ""}Listed by ${sellerName} on Microbid`;
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+
+        return res.status(200).send(
+          htmlDoc({
+            title: listing.title || "Listing",
+            description,
+            image: listing.image || listing.images?.[0] || "",
+            url: shareUrl,
+            redirectTo,
+          })
+        );
+      }
+
+      // Unknown type -> fallback
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(200).send(
+        htmlDoc({
+          title: "Microbid",
+          description: "Marketplace for buying and selling digital accounts and services.",
+          image: "",
+          url: baseUrl,
+          redirectTo: "/feed",
+        })
+      );
+    }
+
     // PUBLIC: username availability check
     const check = q1(req.query?.checkUsername);
     if (req.method === "GET" && check) {

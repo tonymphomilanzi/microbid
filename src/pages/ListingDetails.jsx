@@ -296,7 +296,10 @@ export default function ListingDetails() {
     return Array.from(new Set(gallery)).slice(0, 7);
   }, [listing]);
 
-  const shareUrl = useMemo(() => `${window.location.origin}/listings/${id}`, [id]);
+  const shareUrl = useMemo(() => {
+  return `${window.location.origin}/api/me?public=share&type=listing&id=${id}`;
+}, [id]);
+  
 
   const minBid = useMemo(() => {
     const price = Number(listing?.price ?? 0);

@@ -56,9 +56,9 @@ const [deleteOpen, setDeleteOpen] = useState(false);
 const [deleteLoading, setDeleteLoading] = useState(false);
 const [commentToDelete, setCommentToDelete] = useState(null);
 
-  const shareUrl = useMemo(() => {
-    return `${window.location.origin}/feed/${id}`;
-  }, [id]);
+const shareUrl = useMemo(() => {
+  return `${window.location.origin}/api/me?public=share&type=feed&id=${id}`;
+}, [id]);
 
   useEffect(() => {
     let mounted = true;
