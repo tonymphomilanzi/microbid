@@ -96,7 +96,7 @@ function VerifiedCheckWithOnline({ online }) {
         <span
           className={[
             "h-1.5 w-1.5 rounded-full ring-2 ring-background",
-            online ? "bg-emerald-400" : "bg-muted-foreground/40",
+            online ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/40",
           ].join(" ")}
         />
       </span>
@@ -161,7 +161,7 @@ export default function ListingDetails() {
   const hasAcceptedBid = Boolean(listing?.acceptedBidId);
   const isWinner = Boolean(user && hasAcceptedBid && listing?.acceptedBidderId === user.uid);
 
-  // ✅ Streaming Kit detection
+  //  Streaming Kit detection
   const STREAMING_KITS_SLUG = "streaming-kit";
   const isStreamingKit = (() => {
     const slug = String(listing?.category?.slug || "").toLowerCase().trim();
@@ -169,7 +169,7 @@ export default function ListingDetails() {
     return slug === STREAMING_KITS_SLUG || name === "streaming kit" || name === "streaming-kit";
   })();
 
-  // ✅ Discount logic (Streaming Kit only; only when no accepted bid)
+  //  Discount logic (Streaming Kit only; only when no accepted bid)
   const listPrice = Number(listing?.price ?? 0);
   const discountPercent = Math.trunc(Number(listing?.discountPercent ?? 0));
   const hasDiscount =
