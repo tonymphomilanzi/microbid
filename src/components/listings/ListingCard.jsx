@@ -1,10 +1,12 @@
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { DollarSign, Image as ImageIcon, BadgeCheck } from "lucide-react";
 import ShareSheet from "../shared/ShareSheet";
 import UserAvatar from "../shared/UserAvatar";
+
+const PROFILE_BASE = "/users"; // change to "/u" or "/@"" if needed
 
 const platformClasses = (p) => {
   if (p === "YouTube") return "bg-red-500/10 text-red-300 border-red-500/20";
@@ -15,11 +17,28 @@ const platformClasses = (p) => {
 };
 
 function SellerHandle({ username }) {
-  if (username) return <span className="truncate text-sm text-muted-foreground">@{username}</span>;
+  if (!username) {
+    return (
+      <span className="truncate text-sm text-muted-foreground select-none blur-[3px]">
+        @private_seller
+      </span>
+    );
+  }
+
+  const to = `${PROFILE_BASE}/${encodeURIComponent(username)}`;
+  const stop = (e) => e.stopPropagation();
+
   return (
-    <span className="truncate text-sm text-muted-foreground select-none blur-[3px]">
-      @private_seller
-    </span>
+    <Link
+      to={to}
+      onClick={stop}
+      onKeyDown={stop}
+      className="truncate text-sm text-muted-foreground hover:underline focus:underline focus:outline-none"
+      title={`@${username}`}
+      aria-label={`View profile of @${username}`}
+    >
+      @{username}
+    </Link>
   );
 }
 
@@ -138,7 +157,6 @@ export default function ListingCard({ listing }) {
 
             <div className="min-w-0 flex items-center gap-1">
               <SellerHandle username={username} />
-
               {verified ? <VerifiedCheckWithOnline online={online} /> : null}
             </div>
           </div>

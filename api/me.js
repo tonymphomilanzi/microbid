@@ -37,7 +37,7 @@ function getBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
-function htmlDoc({ title, description, image, url, redirectTo, siteName = "Microbid" }) {
+function htmlDoc({ title, description, image, url, redirectTo, siteName = "Mikrobid" }) {
   const t = escapeHtml(title);
   const d = escapeHtml(description);
   const hasImage = Boolean(image);
