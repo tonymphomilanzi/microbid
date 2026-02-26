@@ -552,6 +552,93 @@ export default async function handler(req, res) {
       });
     }
 
+
+
+     // -------------------------
+  // PUBLIC: userProfile (by username or userId)
+  // -------------------------
+  if (req.method === "GET" && qv(query?.public) === "userProfile") {
+    if (
+      !checkRateLimitOr429(req, res, {
+       scope: "get:userProfile",
+        limit: 60,
+       windowMs: 60_000,
+     })
+    )
+     return;
+
+    const usernameRaw = String(qv(query?.username) || "").trim();
+    const userIdRaw = String(qv(query?.userId) || "").trim();
+
+    if (!usernameRaw && !userIdRaw) {
+      return send(res, 400, { message: "username or userId is required" });
+   }
+
+   const viewerUid = await optionalAuthUid(req);
+   const user = usernameRaw
+     ? await prisma.user.findFirst({
+          where: { username: { equals: usernameRaw, mode: "insensitive" } },
+          select: {
+            id: true,
+           username: true,
+            avatarUrl: true,
+            lastActiveAt: true,
+            isVerified: true,
+           tier: true,
+          },
+        })
+      : await prisma.user.findUnique({
+         where: { id: userIdRaw },
+         select: {
+           id: true,
+            username: true,
+            avatarUrl: true,
+            lastActiveAt: true,
+            isVerified: true,
+            tier: true,
+         },
+       });
+
+    if (!user) return send(res, 404, { message: "User not found" });
+
+    const listingsRaw = await prisma.listing.findMany({
+      where: { sellerId: user.id, status: "ACTIVE" },
+      orderBy: { createdAt: "desc" },
+      include: {
+       seller: {
+         select: {
+            id: true,
+           username: true,
+           avatarUrl: true,
+            lastActiveAt: true,
+          isVerified: true,
+          tier: true,
+        },
+       },
+       category: true,
+       _count: { select: { likes: true, comments: true, views: true } },
+       ...(viewerUid ? { likes: { where: { userId: viewerUid }, select: { id: true } } } : {}),
+      },
+   });
+
+   const listings = listingsRaw.map((l) => {
+      const { _count, likes, ...rest } = l;      return {
+      ...rest,
+       likeCount: _count?.likes ?? 0,
+       commentCount: _count?.comments ?? 0,
+        viewCount: _count?.views ?? 0,
+        likedByMe: viewerUid ? (likes?.length ?? 0) > 0 : false,
+      };
+    });
+
+   return send(res, 200, {
+     user,
+     listings,
+    counts: { activeListings: listings.length },
+  });
+ }
+ 
+   
     // -------------------------
     // PUBLIC: list listings
     // -------------------------

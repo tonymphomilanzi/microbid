@@ -53,7 +53,7 @@ import AdminSubscriptionPayments from "./pages/admin/AdminSubscriptionPayments";
 
 // In your routes file (e.g., App.jsx or routes.jsx)
 import Messages from "./pages/Messages"
-
+import UserProfile from "./pages/UserProfile";
 
 export default function App() {
   usePresencePing();
@@ -83,6 +83,8 @@ export default function App() {
         {/* Pricing (public) */}
         <Route path="/pricing" element={<Pricing />} />
 
+        <Route path="/users/:username" element={<UserProfile />} />
+
         
 <Route path="/messages" element={<Messages />} />
        
@@ -97,6 +99,7 @@ export default function App() {
         <Route path="/privacy-policy" element={<SitePage />} />
         <Route path="/cookies-policy" element={<SitePage />} />
         <Route path="/terms" element={<SitePage />} />
+   
 
         {/* ============================================================
             PROTECTED USER ROUTES (login required)
