@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams,Link } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -61,7 +61,7 @@ function moneyOrDash(v) {
   return `$${n}`;
 }
 
-{/**
+/**
 
 function VerifiedCheckWithOnline({ online }) {
   return (
@@ -80,8 +80,7 @@ function VerifiedCheckWithOnline({ online }) {
       <BadgeCheck className="h-5 w-5 text-white" strokeWidth={3.5} />
     </span>
   );
-}*/}
-
+}*/
 
 function VerifiedCheckWithOnline({ online }) {
   return (
@@ -297,9 +296,8 @@ export default function ListingDetails() {
   }, [listing]);
 
   const shareUrl = useMemo(() => {
-  return `${window.location.origin}/api/me?public=share&type=listing&id=${id}`;
-}, [id]);
-  
+    return `${window.location.origin}/api/me?public=share&type=listing&id=${id}`;
+  }, [id]);
 
   const minBid = useMemo(() => {
     const price = Number(listing?.price ?? 0);
@@ -713,23 +711,41 @@ export default function ListingDetails() {
               <Card className="border-border/60 bg-card/60">
                 <CardContent className="p-4">
                   <div className="text-xs text-muted-foreground">Seller</div>
-                <div className="mt-1 flex items-center gap-2 min-w-0">
-  <UserAvatar
-    src={listing?.seller?.avatarUrl}
-    alt={username ? `@${username}` : "Seller"}
-    size={32}
-    online={!verified && isOnline(listing?.seller?.lastActiveAt)} // only show dot if NOT verified
-  />
-  <div className="flex min-w-0 items-center gap-1">
-    <SellerHandle username={username} />
-    {verified ? (
-      <div className="flex items-center gap-1.5 ml-1">
-        <VerifiedCheckWithOnline online={isOnline(listing?.seller?.lastActiveAt)} />
-        <span className="text-xs font-medium text-primary">Verified</span>
-      </div>
-    ) : null}
-  </div>
-</div>
+                  {username ? (
+                    <Link
+                      to={`/users/${encodeURIComponent(username)}`}
+                      className="mt-1 flex items-center gap-2 min-w-0 group/seller"
+                      title={`View @${username}`}
+                    >
+                      <UserAvatar
+                        src={listing?.seller?.avatarUrl}
+                        alt={`@${username}`}
+                        size={32}
+                        online={!verified && isOnline(listing?.seller?.lastActiveAt)}
+                      />
+                      <span className="truncate text-sm font-medium group-hover/seller:underline">
+                        @{username}
+                      </span>
+                      {verified ? (
+                        <div className="flex items-center gap-1.5 ml-1">
+                          <VerifiedCheckWithOnline online={isOnline(listing?.seller?.lastActiveAt)} />
+                          <span className="text-xs font-medium text-primary">Verified</span>
+                        </div>
+                      ) : null}
+                    </Link>
+                  ) : (
+                    <div className="mt-1 flex items-center gap-2 min-w-0">
+                      <UserAvatar
+                        src={listing?.seller?.avatarUrl}
+                        alt="Seller"
+                        size={32}
+                        online={!verified && isOnline(listing?.seller?.lastActiveAt)}
+                      />
+                      <span className="truncate text-sm font-medium select-none blur-[3px]">
+                        @private_seller
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -826,7 +842,17 @@ export default function ListingDetails() {
             <div className="text-xs text-muted-foreground">
               Top bidder:{" "}
               <span className="font-semibold text-foreground">
-                {topBidder?.username ? `@${topBidder.username}` : "—"}
+                {topBidder?.username ? (
+                  <Link
+                    to={`/users/${encodeURIComponent(topBidder.username)}`}
+                    className="hover:underline"
+                    title={`View @${topBidder.username}`}
+                  >
+                    @{topBidder.username}
+                  </Link>
+                ) : (
+                  "—"
+                )}
               </span>{" "}
               • Highest bid: <span className="font-semibold text-foreground">${highestBid || 0}</span> • Minimum next bid:{" "}
               <span className="font-semibold text-foreground">${minBid}</span>
@@ -947,13 +973,33 @@ export default function ListingDetails() {
                       <div key={c.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 text-sm">
-                            <UserAvatar
-                              src={c.author?.avatarUrl}
-                              alt={c.author?.username ? `@${c.author.username}` : "User"}
-                              size={32}
-                              online={isOnline(c.author?.lastActiveAt)}
-                            />
-                            <CommentAuthor username={c.author?.username} />
+                            {c.author?.username ? (
+                              <Link
+                                to={`/users/${encodeURIComponent(c.author.username)}`}
+                                className="flex items-center gap-2 group/commenter"
+                                title={`View @${c.author.username}`}
+                              >
+                                <UserAvatar
+                                  src={c.author?.avatarUrl}
+                                  alt={`@${c.author.username}`}
+                                  size={32}
+                                  online={isOnline(c.author?.lastActiveAt)}
+                                />
+                                <span className="font-medium group-hover/commenter:underline">
+                                  @{c.author.username}
+                                </span>
+                              </Link>
+                            ) : (
+                              <>
+                                <UserAvatar
+                                  src={c.author?.avatarUrl}
+                                  alt="User"
+                                  size={32}
+                                  online={isOnline(c.author?.lastActiveAt)}
+                                />
+                                <span className="select-none blur-[3px]">@private_user</span>
+                              </>
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}
@@ -1070,19 +1116,33 @@ export default function ListingDetails() {
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 text-sm">
-                              <UserAvatar
-                                src={b.bidder?.avatarUrl}
-                                alt={b.bidder?.username ? `@${b.bidder.username}` : "User"}
-                                size={32}
-                                online={isOnline(b.bidder?.lastActiveAt)}
-                              />
-                              <span className="font-medium">
-                                {b.bidder?.username ? (
-                                  `@${b.bidder.username}`
-                                ) : (
+                              {b.bidder?.username ? (
+                                <Link
+                                  to={`/users/${encodeURIComponent(b.bidder.username)}`}
+                                  className="flex items-center gap-2 group/bidder"
+                                  title={`View @${b.bidder.username}`}
+                                >
+                                  <UserAvatar
+                                    src={b.bidder?.avatarUrl}
+                                    alt={`@${b.bidder.username}`}
+                                    size={32}
+                                    online={isOnline(b.bidder?.lastActiveAt)}
+                                  />
+                                  <span className="font-medium group-hover/bidder:underline">
+                                    @{b.bidder.username}
+                                  </span>
+                                </Link>
+                              ) : (
+                                <>
+                                  <UserAvatar
+                                    src={b.bidder?.avatarUrl}
+                                    alt="User"
+                                    size={32}
+                                    online={isOnline(b.bidder?.lastActiveAt)}
+                                  />
                                   <span className="select-none blur-[3px]">@private_user</span>
-                                )}
-                              </span>
+                                </>
+                              )}
 
                               {leading ? (
                                 <span className="ml-2 rounded-full bg-yellow-400 px-2 py-0.5 text-[11px] font-semibold text-black">
