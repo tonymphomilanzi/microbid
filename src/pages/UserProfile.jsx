@@ -5,10 +5,12 @@ import PageContainer from "../components/layout/PageContainer";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "../components/ui/drawer";
 
 import ListingCard from "../components/listings/ListingCard";
 import ShareSheet from "../components/shared/ShareSheet";
 import UserAvatar from "../components/shared/UserAvatar";
+import ChatDialog from "../components/chat/ChatDialog";
 import { useAuth } from "../context/AuthContext";
 
 import { BadgeCheck, MessageCircle, ExternalLink } from "lucide-react";
@@ -41,11 +43,15 @@ function PlanBadge({ name }) {
 export default function UserProfile() {
   const { username } = useParams();
   const navigate = useNavigate();
-  const { user: authUser } = useAuth() || {};
+  const { user: authUser, openAuthModal } = useAuth() || {};
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [listingForChat, setListingForChat] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const isMe = useMemo(() => {
     const uid = authUser?.uid || authUser?.id;
@@ -59,8 +65,7 @@ export default function UserProfile() {
   );
 
   async function refresh() {
-    setError("");
-    setLoading(true);
+    setError(""); setLoading(true);
     try {
       const { data } = await axios.get("/api/listings", {
         params: { public: "userProfile", username },
@@ -74,14 +79,20 @@ export default function UserProfile() {
     }
   }
 
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username]);
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [username]);
 
-  const handleMessage = () => {
-    if (!profile?.user?.id) return;
-    navigate(`/messages/new?to=${encodeURIComponent(profile.user.id)}`);
+  const startChatForListing = (l) => {
+    if (!authUser) return openAuthModal?.();
+    setListingForChat(l);
+    setChatOpen(true);
+  };
+
+  const handleHeaderMessage = () => {
+    if (!authUser) return openAuthModal?.();
+    const list = profile?.listings || [];
+    if (list.length === 0) return; // nothing to chat about
+    if (list.length === 1) return startChatForListing(list[0]);
+    setPickerOpen(true); // choose listing context
   };
 
   if (loading) {
@@ -107,9 +118,7 @@ export default function UserProfile() {
             <CardContent className="p-6">
               <div className="text-sm font-medium">Could not load profile</div>
               <div className="mt-1 text-sm text-muted-foreground">{error}</div>
-              <div className="mt-4">
-                <Button variant="outline" onClick={refresh}>Retry</Button>
-              </div>
+              <div className="mt-4"><Button variant="outline" onClick={refresh}>Retry</Button></div>
             </CardContent>
           </Card>
         </div>
@@ -124,9 +133,7 @@ export default function UserProfile() {
           <Card className="border-border/60 bg-card/60">
             <CardContent className="p-6">
               <div className="text-sm font-medium">User not found</div>
-              <div className="mt-4">
-                <Button asChild variant="outline"><Link to="/">Go home</Link></Button>
-              </div>
+              <div className="mt-4"><Button asChild variant="outline"><Link to="/">Go home</Link></Button></div>
             </CardContent>
           </Card>
         </div>
@@ -143,7 +150,7 @@ export default function UserProfile() {
         <Card className="border-border/60 bg-card/60 backdrop-blur">
           <CardContent className="p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
+              <Link to={`/users/${encodeURIComponent(u.username || "")}`} className="flex items-center gap-3" title={u.username ? `@${u.username}` : "User"}>
                 <UserAvatar
                   src={u.avatarUrl}
                   alt={u.username ? `@${u.username}` : "User"}
@@ -152,9 +159,7 @@ export default function UserProfile() {
                 />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <div className="truncate text-lg font-semibold">
-                      {u.username ? `@${u.username}` : "User"}
-                    </div>
+                    <div className="truncate text-lg font-semibold hover:underline">@{u.username}</div>
                     {u.isVerified ? <VerifiedCheckWithOnline online={online} /> : null}
                     <PlanBadge name={u.tier} />
                   </div>
@@ -162,7 +167,7 @@ export default function UserProfile() {
                     {profile.counts?.activeListings ?? 0} Active {profile.counts?.activeListings === 1 ? "Listing" : "Listings"}
                   </div>
                 </div>
-              </div>
+              </Link>
 
               <div className="flex flex-wrap gap-2">
                 <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
@@ -181,7 +186,12 @@ export default function UserProfile() {
                     </Link>
                   </Button>
                 ) : (
-                  <Button onClick={handleMessage} className="gap-2">
+                  <Button
+                    onClick={handleHeaderMessage}
+                    className="gap-2"
+                    disabled={!profile.listings?.length}
+                    title={!profile.listings?.length ? "No active listings to discuss" : "Message seller"}
+                  >
                     <MessageCircle className="h-4 w-4" />
                     Message
                   </Button>
@@ -191,11 +201,19 @@ export default function UserProfile() {
           </CardContent>
         </Card>
 
-        {/* Listings grid (ACTIVE only) */}
+        {/* Listings grid (ACTIVE only) + inline Message CTA */}
         {profile.listings?.length ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {profile.listings.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
+            {profile.listings.map((l) => (
+              <div key={l.id} className="space-y-2">
+                <ListingCard listing={l} />
+                {!isMe ? (
+                  <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => startChatForListing(l)}>
+                    <MessageCircle className="h-4 w-4" />
+                    Message about this listing
+                  </Button>
+                ) : null}
+              </div>
             ))}
           </div>
         ) : (
@@ -205,6 +223,40 @@ export default function UserProfile() {
             </CardContent>
           </Card>
         )}
+
+        {/* Choose listing (if multiple) */}
+        <Drawer open={pickerOpen} onOpenChange={setPickerOpen}>
+          <DrawerContent className="max-h-[85vh]">
+            <div className="mx-auto w-full max-w-2xl px-4 pb-4">
+              <DrawerHeader className="px-0">
+                <DrawerTitle>Select a listing to message about</DrawerTitle>
+              </DrawerHeader>
+              <div className="space-y-2">
+                {(profile.listings || []).map((l) => (
+                  <button
+                    key={l.id}
+                    className="w-full rounded-xl border border-border/60 bg-card/60 p-3 text-left hover:border-primary/30 hover:bg-muted/10"
+                    onClick={() => {
+                      setPickerOpen(false);
+                      startChatForListing(l);
+                    }}
+                  >
+                    <div className="font-medium truncate">{l.title}</div>
+                    <div className="text-xs text-muted-foreground">Price ${l.price} • {l.platform}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </DrawerContent>
+        </Drawer>
+
+        {/* Chat (uses listing context) */}
+        <ChatDialog
+          open={chatOpen}
+          onOpenChange={setChatOpen}
+          currentUser={authUser}
+          listing={listingForChat}
+        />
       </div>
     </PageContainer>
   );

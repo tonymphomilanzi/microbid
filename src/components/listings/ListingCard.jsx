@@ -148,12 +148,30 @@ export default function ListingCard({ listing }) {
         {/* Seller row */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <UserAvatar
-              src={listing?.seller?.avatarUrl}
-              alt={username ? `@${username}` : "Seller"}
-              size={36}
-              online={avatarOnline}
-            />
+           {username ? (
+  <Link
+    to={`${PROFILE_BASE}/${encodeURIComponent(username)}`}
+    onClick={(e) => e.stopPropagation()}
+    onKeyDown={(e) => e.stopPropagation()}
+    className="shrink-0"
+    title={`@${username}`}
+    aria-label={`View profile of @${username}`}
+  >
+    <UserAvatar
+      src={listing?.seller?.avatarUrl}
+      alt={`@${username}`}
+      size={36}
+      online={avatarOnline}
+    />
+  </Link>
+) : (
+  <UserAvatar
+    src={listing?.seller?.avatarUrl}
+    alt="Seller"
+    size={36}
+    online={avatarOnline}
+  />
+)}
 
             <div className="min-w-0 flex items-center gap-1">
               <SellerHandle username={username} />
